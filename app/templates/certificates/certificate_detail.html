@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Certificate Details - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>Certificate Details</h1>
+    {% if user_role == 'auditor' %}
+        <p>Audit view of certificate transparency record.</p>
+    {% elif user_role == 'system_admin' %}
+        <p>System Administrator view of certificate record.</p>
+    {% endif %}
+    
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('certificates.transparency_log') }}" class="button">← Back to Transparency Log</a>
+    </div>
+
+    {% if certificate %}
+    <div class="certificate-details" style="background: #f8f9fa; padding: 20px; border-radius: 5px;">
+        <h2>{{ certificate.subject.common_name or 'Unknown Subject' }}</h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
+            <!-- Basic Information -->
+            <div class="detail-section">
+                <h3>Basic Information</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Type:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            <span class="cert-type cert-type-{{ certificate.certificate_type or 'unknown' }}">
+                                {{ (certificate.certificate_type or 'Unknown').title() }}
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Status:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            {% if certificate.revoked_at or certificate.revocation %}
+                                <span class="status-revoked" style="color: #dc3545; font-weight: bold;">Revoked</span>
+                                <br><small>Revoked on: 
+                                {% if certificate.revocation and certificate.revocation.revoked_at %}
+                                    {{ certificate.revocation.revoked_at[:19] }} UTC
+                                {% elif certificate.revoked_at %}
+                                    {{ certificate.revoked_at[:19] }} UTC
+                                {% endif %}
+                                </small>
+                                {% if certificate.revocation and certificate.revocation.reason %}
+                                <br><small>Reason: {{ certificate.revocation.reason.replace('_', ' ').title() }}</small>
+                                {% endif %}
+                                {% if certificate.revocation and certificate.revocation.revoked_by %}
+                                <br><small>Revoked by: {{ certificate.revocation.revoked_by }}</small>
+                                {% endif %}
+                            {% else %}
+                                <span class="status-active" style="color: #28a745; font-weight: bold;">Active</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Serial Number:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd; font-family: monospace;">{{ certificate.serial_number or 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Fingerprint (SHA-256):</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd; font-family: monospace; word-break: break-all;">
+                            {{ certificate.fingerprint_sha256 or 'N/A' }}
+                        </td>
+                    </tr>
+                    {% if user_role in ['admin', 'system_admin'] and certificate.issuing_user_id %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Issuing User ID:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuing_user_id }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+
+            <!-- Validity Period -->
+            <div class="detail-section">
+                <h3>Validity Period</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Not Before:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            {% if certificate.not_before %}
+                                {{ certificate.not_before.replace('T', ' ')[:19] }} UTC
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Not After:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            {% if certificate.not_after %}
+                                {{ certificate.not_after.replace('T', ' ')[:19] }} UTC
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Certificate Purpose:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.certificate_purpose or 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Logged At:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            {% if certificate.logged_at %}
+                                {{ certificate.logged_at.replace('T', ' ')[:19] }} UTC
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Subject Information -->
+            {% if certificate.subject %}
+            <div class="detail-section">
+                <h3>Subject</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    {% if certificate.subject.common_name %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Common Name:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.common_name }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if certificate.subject.email_address %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Email Address:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.email_address }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if certificate.subject.organization %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Organization:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.organization }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if certificate.subject.organizational_unit %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Organizational Unit:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.organizational_unit }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if certificate.subject.country %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Country:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.country }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+            {% endif %}
+
+            <!-- Issuer Information -->
+            {% if certificate.issuer %}
+            <div class="detail-section">
+                <h3>Issuer</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    {% if certificate.issuer.common_name %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Common Name:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuer.common_name }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if certificate.issuer.organization %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Organization:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuer.organization }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if certificate.issuer.country %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Country:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuer.country }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+            {% endif %}
+
+            <!-- Audit Information (for Auditors and System Admins) -->
+            {% if user_role in ['auditor', 'system_admin'] and certificate.issuer_info %}
+            <div class="detail-section">
+                <h3>Request Information</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    {% if certificate.issuer_info.request_source %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Request Source IP:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd; font-family: monospace;">{{ certificate.issuer_info.request_source }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if certificate.issuer_info.user_agent %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">User Agent:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd; word-break: break-all;">{{ certificate.issuer_info.user_agent }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if certificate.issuer_info.issued_by %}
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Issued By Service:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuer_info.issued_by }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Certificate PEM (for Auditors and System Admins) -->
+        {% if user_role in ['auditor', 'system_admin'] and certificate.pem %}
+        <div style="margin-top: 30px;">
+            <h3>Certificate (PEM Format)</h3>
+            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 15px;">
+                <pre style="margin: 0; font-family: 'Courier New', monospace; font-size: 0.9em; line-height: 1.4; white-space: pre-wrap; word-break: break-all;">{{ certificate.pem }}</pre>
+            </div>
+            <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                <strong>Note:</strong> This PEM data is provided for audit and verification purposes.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <h2>Certificate Not Found</h2>
+        <p>The requested certificate could not be found in the transparency log.</p>
+    </div>
+    {% endif %}
+
+    <style>
+        .cert-type {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .cert-type-client { background: #d1ecf1; color: #0c5460; }
+        .cert-type-server { background: #f8d7da; color: #721c24; }
+        .cert-type-intermediate { background: #fff3cd; color: #856404; }
+        .cert-type-unknown { background: #e2e3e5; color: #6c757d; }
+        
+        .button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        
+        .detail-section {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #e9ecef;
+        }
+        .detail-section h3 {
+            margin-top: 0;
+            color: #495057;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+    </style>
+{% endblock %}

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{% block title %}{{ current_app.config.get('SITE_NAME') }}{% endblock %}</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+    </head>
+    <body>
+        {% if current_app.config.get('FLASK_ENV') == 'development' or current_app.config.get('FLASK_CONFIG') == 'development' %}
+        <div class="dev-warning-banner" style="background-color: #ff6b6b; color: white; text-align: center; padding: 10px; font-weight: bold; border-bottom: 3px solid #ff5252;">
+            🚨 DEVELOPMENT MODE - INSECURE CONFIGURATION 🚨
+            <br>
+            <small>This server is running in development mode with bypassed security features. DO NOT USE IN PRODUCTION!</small>
+        </div>
+        {% endif %}
+        
+        <header>
+            <div class="logo"><a href="{{ user_url_base }}{{ url_for('root.index') }}">{{ current_app.config.get('SITE_NAME') }}</a></div>
+            <nav>
+                {% if 'user' in roles %}
+                    {% if 'service_admin' in roles or 'system_admin' in roles or 'auditor' in roles %}
+                    <div class="dropdown">
+                        <button class="dropdown-button">
+                            Admin
+                        </button>
+                        <div class="dropdown-content">
+                            {% if 'service_admin' in roles or 'system_admin' in roles %}
+                            <a href="{{ url_for('admin.list_psks') }}">Pre-Shared Keys</a>
+                            <a href="{{ url_for('admin.list_certificates') }}">Admin Certificate Management</a>
+                            {% endif %}
+                            <a href="{{ url_for('certificates.transparency_log') }}">Certificate Transparency Log</a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="dropdown">
+                        <button class="dropdown-button">
+                            {{ session.user.name or session.user.email or 'Not logged in' }}
+                        </button>
+                        <div class="dropdown-content">
+                            <a href="{{ user_url_base }}{{ url_for('profile.list_user_certificates') }}">My Certificates</a>
+                            <a href="{{ url_for('auth.logout') }}">
+                                Reauthenticate
+                                {%- if user_url_base != '' %} in admin context
+                                {%- elif admin_url_base != '' %}
+                                    {%- if 'service_admin' in roles or 'system_admin' in roles or 'auditor' in roles %}
+                                        in user context
+                                    {%- endif %}
+                                {%- endif %}
+                                <hr>
+                                <strong>User Email:</strong> {{ session.user.email or 'Not logged in' }}<br>
+                                <strong>User Groups:</strong> 
+                                {% if session.user and session.user.get('groups') %}
+                                    {{ session.user.get('groups') }}
+                                {% else %}
+                                    None detected
+                                {% endif %}
+                            </a>
+                        </div>
+                    </div>
+                {% endif %}
+            </nav>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flashes">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <main class="main-content">
+            <div class="container">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+
+        {% if current_app.config.get('FLASK_ENV') == 'development' or current_app.config.get('FLASK_CONFIG') == 'development' %}
+        <footer class="dev-warning-footer" style="background-color: #ff6b6b; color: white; text-align: center; padding: 8px; margin-top: 20px; font-size: 0.9em;">
+            🚨 INSECURE DEVELOPMENT MODE - Authentication and security features may be bypassed 🚨
+        </footer>
+        {% endif %}
+
+    </body>
+</html>

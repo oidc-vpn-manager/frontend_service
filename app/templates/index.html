@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>{{ current_app.config.get('SITE_NAME') }}</h1>
+    <h2>Generate VPN Configuration</h2>
+    <p>Click "Generate Profile" to download your personal OpenVPN profile.</p>
+    
+    <form action="" method="post">
+        {{ form.hidden_tag() }} {# This adds the CSRF token #}
+        <input type="submit" value="Generate Profile" class="button">
+
+        <details style="margin-top: 2em; text-align: left;">
+            <summary style="cursor: pointer; font-weight: 500; color: #0052cc;">
+                If you have been advised to enable additional options, click here.
+            </summary>
+            <fieldset>
+                <legend>Available Options</legend>
+                {% for name, option in ovpn_options.items() %}
+                    <div class="form-check">
+                        <input type="checkbox" id="{{ name }}" name="options" value="{{ name }}">
+                        <label for="{{ name }}">{{ option.display_name }} - {{ option.description }}</label>
+                    </div>
+                {% else %}
+                    <p>No custom options are available at this time.</p>
+                {% endfor %}
+            </fieldset>
+        </details>
+    </form>
+{% endblock %}

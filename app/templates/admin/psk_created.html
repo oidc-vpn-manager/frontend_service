@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}PSK Created Successfully - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>Pre-Shared Key Created Successfully</h1>
+    <div class="alert alert-success">
+        <p><strong>✅ Success!</strong> Your Pre-Shared Key for "{{ description }}" has been created using the "{{ template_set }}" template set.</p>
+    </div>
+
+    <div class="security-warning" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 20px; margin: 20px 0;">
+        <h3 style="color: #856404; margin-top: 0;">⚠️ Important Security Notice</h3>
+        <p style="color: #856404; margin-bottom: 15px;">
+            <strong>This is the ONLY time you will see this Pre-Shared Key.</strong> 
+            Copy the commands immediately. The key will not be shown again for security reasons.
+        </p>
+
+        <p>To use this Pre-Shared Key (PSK) on your server, follow these steps:</p>
+        
+        <h4>1. Download the script</h4>
+        <div class="command-block">
+            <code id="curlCommand">curl -O https://raw.githubusercontent.com/openvpn-manager/get-openvpn-config/refs/heads/main/get_openvpn_config.py</code>
+            <button type="button" class="copy-button" data-target-id="curlCommand">Copy</button>
+        </div>
+
+        <h4>2. Run the script with your PSK</h4>
+        <div class="command-block">
+            <code id="pythonCommand">python3 get_openvpn_config.py get-psk-profile --psk {{ psk }} --server-url {{ server_url }}</code>
+            <button type="button" class="copy-button" data-target-id="pythonCommand">Copy</button>
+        </div>
+
+        <div class="security-warning">
+            <p><strong>⚠️ Security Note:</strong> This PSK is sensitive information. Keep it secure and do not share it with unauthorized users.</p>
+        </div>
+    </div>
+
+    <div style="margin-top: 30px; text-align: center;">
+        <a href="{{ url_for('admin.list_psks') }}" class="button">Return to PSK Management</a>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

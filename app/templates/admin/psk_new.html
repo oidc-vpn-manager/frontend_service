@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}New Pre-Shared Key - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>Create New Pre-Shared Key</h1>
+    <form method="POST" action="">
+        {{ form.hidden_tag() }}
+        <div class="form-group">
+            {{ form.description.label }}
+            {{ form.description(class="form-control") }}
+            {% for error in form.description.errors %}
+                <span class="error">{{ error }}</span>
+            {% endfor %}
+        </div>
+        <div class="form-group">
+            {{ form.template_set.label }}
+            {{ form.template_set(class="form-control") }}
+            {% for error in form.template_set.errors %}
+                <span class="error">{{ error }}</span>
+            {% endfor %}
+            <small class="form-text text-muted">Select which server template set this PSK will use for generating server configurations.</small>
+        </div>
+        {{ form.submit(class="button") }}
+    </form>
+{% endblock %}

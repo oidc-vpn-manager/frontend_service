@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block title %}Bad Request - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>Bad Request (400)</h1>
+    <p>The server could not process your request due to an error.</p>
+    <p><em>{{ error_description }}</em></p>
+{% endblock %}

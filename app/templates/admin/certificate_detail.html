@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Certificate Details - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>Certificate Details</h1>
+    
+    
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('admin.list_certificates') }}" class="button">← Back to Certificate List</a>
+    </div>
+
+    {% if certificate %}
+    <div class="certificate-details" style="background: #f8f9fa; padding: 20px; border-radius: 5px;">
+        <h2>{{ certificate.subject.common_name or 'Unknown Subject' }}</h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
+            <!-- Basic Information -->
+            <div class="detail-section">
+                <h3>Basic Information</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Type:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            <span class="cert-type cert-type-{{ certificate.certificate_type or 'unknown' }}">
+                                {{ (certificate.certificate_type or 'Unknown').title() }}
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Status:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            {% if certificate.revoked_at or certificate.revocation %}
+                                <span class="status-revoked" style="color: #dc3545; font-weight: bold;">Revoked</span>
+                                <br><small>Revoked on: 
+                                {% if certificate.revocation and certificate.revocation.revoked_at %}
+                                    {{ certificate.revocation.revoked_at[:19] }} UTC
+                                {% elif certificate.revoked_at %}
+                                    {{ certificate.revoked_at[:19] }} UTC
+                                {% endif %}
+                                </small>
+                                {% if certificate.revocation and certificate.revocation.reason %}
+                                <br><small>Reason: {{ certificate.revocation.reason.replace('_', ' ').title() }}</small>
+                                {% endif %}
+                                {% if certificate.revocation and certificate.revocation.revoked_by %}
+                                <br><small>Revoked by: {{ certificate.revocation.revoked_by }}</small>
+                                {% endif %}
+                            {% else %}
+                                <span class="status-active" style="color: #28a745; font-weight: bold;">Active</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Serial Number:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            <code>{{ certificate.serial_number or 'N/A' }}</code>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Fingerprint (SHA-256):</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            <code style="word-break: break-all; font-size: 0.9em;">{{ certificate.fingerprint_sha256 or 'N/A' }}</code>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Validity Information -->
+            <div class="detail-section">
+                <h3>Validity Period</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Issued:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            {% if certificate.issued_at %}
+                                {{ certificate.issued_at[:19] }} UTC
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Valid From:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            {% if certificate.validity and certificate.validity.not_before %}
+                                {{ certificate.validity.not_before[:19] }} UTC
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Valid Until:</td>
+                        <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                            {% if certificate.validity and certificate.validity.not_after %}
+                                {{ certificate.validity.not_after[:19] }} UTC
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Subject Information -->
+        <div class="detail-section" style="margin-top: 20px;">
+            <h3>Subject Information</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd; width: 200px;">Common Name (CN):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.common_name or 'N/A' }}</td>
+                </tr>
+                {% if certificate.subject and certificate.subject.organization %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Organization (O):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.organization }}</td>
+                </tr>
+                {% endif %}
+                {% if certificate.subject and certificate.subject.organizational_unit %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Organizational Unit (OU):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.organizational_unit }}</td>
+                </tr>
+                {% endif %}
+                {% if certificate.subject and certificate.subject.country %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Country (C):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.country }}</td>
+                </tr>
+                {% endif %}
+                {% if certificate.subject and certificate.subject.state %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">State/Province (ST):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.state }}</td>
+                </tr>
+                {% endif %}
+                {% if certificate.subject and certificate.subject.locality %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Locality (L):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.subject.locality }}</td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+
+        <!-- Issuer Information -->
+        <div class="detail-section" style="margin-top: 20px;">
+            <h3>Issuer Information</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd; width: 200px;">Common Name (CN):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuer.common_name or 'N/A' }}</td>
+                </tr>
+                {% if certificate.issuer and certificate.issuer.organization %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Organization (O):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuer.organization }}</td>
+                </tr>
+                {% endif %}
+                {% if certificate.issuer_organizational_unit %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Organizational Unit (OU):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuer_organizational_unit }}</td>
+                </tr>
+                {% endif %}
+                {% if certificate.issuer_country %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Country (C):</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.issuer_country }}</td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+
+        <!-- PEM Certificate (if available) -->
+        {% if certificate.certificate_pem %}
+        <div class="detail-section" style="margin-top: 20px;">
+            <h3>Certificate Data (PEM Format)</h3>
+            <textarea readonly style="width: 100%; height: 200px; font-family: monospace; font-size: 0.9em; padding: 10px; border: 1px solid #ddd; border-radius: 3px;">{{ certificate.certificate_pem }}</textarea>
+            <p style="margin-top: 10px; font-size: 0.9em; color: #6c757d;">
+                <strong>Note:</strong> This is the complete X.509 certificate in PEM format.
+            </p>
+        </div>
+        {% endif %}
+        
+        <!-- Admin Actions Section -->
+        {% if certificate and not (certificate.revoked_at or certificate.revocation) and (session.user.get('is_admin') or session.user.get('is_system_admin')) %}
+        <div class="admin-actions" style="margin-top: 30px; padding: 20px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px;">
+            <h3 style="color: #856404; margin-top: 0;">Administrative Actions</h3>
+            <p style="color: #856404; margin-bottom: 15px;">
+                <strong>Warning:</strong> Administrative actions are permanent and cannot be undone. Use with caution.
+            </p>
+            
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <button type="button"
+                        data-testid="admin-revoke-certificate"
+                        class="button admin-revoke-btn"
+                        data-fingerprint="{{ certificate.fingerprint_sha256 }}"
+                        data-subject="{{ certificate.subject.common_name or 'Unknown' }}"
+                        style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                    Revoke Certificate
+                </button>
+                
+                {% if certificate.issuing_user_id %}
+                <button type="button"
+                        data-testid="bulk-revoke-user"
+                        class="button bulk-revoke-btn"
+                        data-user-id="{{ certificate.issuing_user_id }}"
+                        data-subject="{{ certificate.subject.common_name or 'Unknown' }}"
+                        style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                    Bulk Revoke User Certificates
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <style>
+        .cert-type {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .cert-type-client {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .cert-type-server {
+            background: #e8f5e8;
+            color: #388e3c;
+        }
+        .cert-type-intermediate {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        .cert-type-unknown {
+            background: #f5f5f5;
+            color: #757575;
+        }
+        .detail-section h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #495057;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 5px;
+        }
+    </style>
+
+    {% else %}
+    <div style="text-align: center; margin: 40px 0; color: #6c757d;">
+        <p>Certificate not found.</p>
+        <p><a href="{{ url_for('admin.list_certificates') }}">Return to certificate list</a></p>
+    </div>
+    {% endif %}
+
+    <!-- Admin Revocation Dialog -->
+    <div id="adminRevocationDialog" data-testid="admin-revocation-dialog" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="background: white; margin: 10% auto; padding: 20px; width: 500px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+            <h3 style="color: #dc3545; margin-top: 0;">Administrative Certificate Revocation</h3>
+            <p><strong>Are you sure</strong> you want to revoke this certificate?</p>
+            <p style="color: #6c757d; font-size: 0.9em;">This administrative revocation action cannot be undone.</p>
+            
+            <form id="adminRevocationForm" method="post" action="">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                <!-- Debug: CSRF token = {{ csrf_token }} -->
+                <div style="margin: 15px 0;">
+                    <label for="adminRevocationReason">Revocation Reason:</label>
+                    <select id="adminRevocationReason" data-testid="admin-revocation-reason" name="reason" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                        <option value="">Select a reason...</option>
+                        <option value="key_compromise">Key Compromise</option>
+                        <option value="ca_compromise">CA Compromise</option>
+                        <option value="affiliation_changed">Affiliation Changed</option>
+                        <option value="superseded">Superseded</option>
+                        <option value="cessation_of_operation">Cessation of Operation</option>
+                        <option value="certificate_hold">Certificate Hold</option>
+                        <option value="privilege_withdrawn">Privilege Withdrawn</option>
+                        <option value="admin_revocation">Administrative Revocation</option>
+                    </select>
+                </div>
+                
+                <div style="margin: 15px 0;">
+                    <label for="revocationComment">Comment (optional):</label>
+                    <textarea id="revocationComment" data-testid="revocation-comment" name="comment" rows="3" style="width: 100%; padding: 8px; margin-top: 5px;" placeholder="Optional comment explaining the revocation..."></textarea>
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" data-testid="cancel-admin-revocation" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button type="submit" data-testid="confirm-admin-revocation" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Revoke Certificate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Bulk Revocation Dialog -->
+    <div id="bulkRevocationDialog" data-testid="bulk-revocation-dialog" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="background: white; margin: 10% auto; padding: 20px; width: 500px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+            <h3 style="color: #dc3545; margin-top: 0;">BULK REVOCATION WARNING</h3>
+            <p><strong>Are you sure</strong> you want to revoke <strong>ALL certificates</strong> for this user?</p>
+            <p style="color: #dc3545; font-weight: bold;">This action cannot be undone!</p>
+            
+            <div data-testid="certificates-count" style="background: #f8d7da; padding: 10px; border-radius: 4px; margin: 15px 0;">
+                <strong>This will revoke all active certificates for the selected user.</strong>
+            </div>
+            
+            <form id="bulkRevocationForm" method="post" action="">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                <!-- Debug: Bulk CSRF token = {{ csrf_token }} -->
+                <div style="margin: 15px 0;">
+                    <label for="bulkRevocationReason">Bulk Revocation Reason:</label>
+                    <select id="bulkRevocationReason" data-testid="bulk-revocation-reason" name="reason" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                        <option value="">Select a reason...</option>
+                        <option value="user_terminated">User Terminated</option>
+                        <option value="security_breach">Security Breach</option>
+                        <option value="admin_bulk_revocation">Administrative Bulk Revocation</option>
+                        <option value="policy_violation">Policy Violation</option>
+                    </select>
+                </div>
+                
+                <div style="margin: 15px 0;">
+                    <label for="bulkRevocationComment">Comment (required for bulk operations):</label>
+                    <textarea id="bulkRevocationComment" data-testid="bulk-revocation-comment" name="comment" rows="3" required style="width: 100%; padding: 8px; margin-top: 5px;" placeholder="Required: Explain the reason for bulk revocation..."></textarea>
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" data-testid="cancel-bulk-revocation" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button type="submit" data-testid="confirm-bulk-revocation" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Revoke All User Certificates</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='admin_cert_detail.js') }}"></script>
+{% endblock %}

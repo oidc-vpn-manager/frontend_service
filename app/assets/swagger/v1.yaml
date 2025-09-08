@@ -1,0 +1,236 @@
+openapi: 3.0.0
+info:
+  title: OpenVPN Manager Frontend API
+  version: "1.0.0"
+  description: |
+    REST API for OpenVPN Manager device and server authentication.
+    
+    This API provides PSK-authenticated endpoints for:
+    - Server configuration bundle retrieval for automated deployment (admin service only)
+    
+    ## Service Separation
+    
+    The frontend service supports three deployment patterns:
+    - **Combined Service**: All endpoints available on single service
+    - **User Service**: Web UI available for user certificate generation via OIDC, admin API endpoints return 403
+    - **Admin Service**: Admin API endpoints available, user routes redirect to user service
+    
+    ## Authentication
+    
+    All API endpoints require authentication using Pre-Shared Keys (PSK) via Bearer token:
+    ```
+    Authorization: Bearer your-psk-here
+    ```
+    
+    PSKs are generated through the administrative web interface and must be distributed securely to authorized devices and servers. Each PSK is associated with a specific description/hostname for audit purposes.
+    
+    ## Security
+    
+    - All endpoints require HTTPS in production
+    - PSKs should be stored securely and rotated regularly
+    - Each PSK is associated with a specific description for audit purposes
+    - Certificate generation includes client IP tracking for geolocation audit trails
+  contact:
+    email: jon+openvpnmanagersecurity@sprig.gs
+  license:
+    name: AGPL v3
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: https://vpn.example.com/api
+    description: Production combined service
+  - url: https://vpn-user.example.com/api
+    description: Production user service
+  - url: https://vpn-admin.example.com/api
+    description: Production admin service
+  - url: http://localhost:8600/api
+    description: Development combined service
+  - url: http://localhost:8450/api
+    description: Development user service
+  - url: http://localhost:8540/api
+    description: Development admin service
+
+paths:
+  /v1/server/bundle:
+    get:
+      summary: Server configuration bundle retrieval (GET)
+      description: |
+        Alternative GET method for retrieving server configuration bundle.
+        Functionally identical to POST method but may be preferred for some automation tools.
+        
+        **Service Separation**: This endpoint is only available on the admin service.
+        
+        **Authentication**: Uses PSK-based authentication via Authorization header.
+      tags:
+        - Server Configuration
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          $ref: '#/paths/~1v1~1server~1bundle/post/responses/200'
+        '401':
+          $ref: '#/paths/~1v1~1server~1bundle/post/responses/401'
+        '403':
+          $ref: '#/paths/~1v1~1server~1bundle/post/responses/403'
+        '500':
+          $ref: '#/paths/~1v1~1server~1bundle/post/responses/500'
+        '503':
+          $ref: '#/paths/~1v1~1server~1bundle/post/responses/503'
+    post:
+      summary: Server configuration bundle retrieval
+      description: |
+        Returns a complete tar.gz archive containing all files needed to configure
+        an OpenVPN server. This endpoint is designed for automated server deployment
+        and configuration management.
+        
+        **Service Separation**: This endpoint is only available on the admin service.
+        If accessed on a user service, it will return a 403 Forbidden error.
+        
+        **Authentication**: Uses PSK-based authentication. The server certificate common name
+        is derived from the PSK's description field with a timestamp for uniqueness 
+        (format: "server-{description}-{timestamp}").
+        
+        **Bundle Contents**:
+        - **ca-chain.crt**: Complete CA certificate chain (intermediate + root)
+        - **server.crt**: Server certificate with proper extensions
+        - **server.key**: Server private key (PKCS#8 format, unencrypted)
+        - **tls-crypt.key**: TLS-Crypt authentication key (if configured)
+        - **server-*.ovpn**: OpenVPN server configuration templates from SERVER_TEMPLATES_DIR
+        
+        The server certificate includes a unique common name with timestamp and
+        is signed with 'server' certificate type. All certificates are automatically
+        logged to the Certificate Transparency service.
+      tags:
+        - Server Configuration
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Server configuration bundle successfully generated
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+                description: Compressed tar archive containing server configuration files
+              examples:
+                server_bundle:
+                  summary: Server configuration bundle
+                  description: |
+                    Binary tar.gz file containing:
+                    - ca-chain.crt (CA certificate chain)
+                    - server.crt (Server certificate)  
+                    - server.key (Server private key)
+                    - tls-crypt.key (TLS-Crypt key)
+                    - *.ovpn (Server configuration templates)
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: "attachment; filename=openvpn-server-vpn-server-01.tar.gz"
+              description: Filename for the downloaded bundle (derived from PSK description)
+            Content-Length:
+              schema:
+                type: integer
+                example: 8192
+              description: Size of the bundle in bytes
+            Content-Type:
+              schema:
+                type: string
+                example: "application/gzip"
+              description: MIME type of the response
+        '401':
+          description: Unauthorized - missing or invalid PSK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing_auth:
+                  summary: Missing authorization header
+                  value:
+                    error: "Authorization header is missing or invalid."
+                invalid_psk:
+                  summary: Invalid or expired PSK
+                  value:
+                    error: "Unauthorized: Invalid or expired key."
+        '403':
+          description: Forbidden - endpoint not available on this service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                wrong_service:
+                  summary: Accessed on user service instead of admin service
+                  value:
+                    error: "This endpoint is only available on the admin service"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal_error:
+                  summary: Unexpected internal error
+                  value:
+                    error: "An internal error occurred"
+        '503':
+          description: Signing service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                service_down:
+                  summary: Signing service error
+                  value:
+                    error: "Signing service unavailable"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: PSK
+      description: |
+        Pre-shared key authentication for devices and servers.
+        
+        PSKs are generated through the administrative web interface and must be
+        included in the Authorization header as a Bearer token:
+        ```
+        Authorization: Bearer your-psk-here
+        ```
+        
+        Each PSK is associated with a specific hostname and can be revoked
+        through the administrative interface.
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "An internal error occurred"
+      required:
+        - error
+      description: Standard error response format
+
+tags:
+  - name: Device Authentication
+    description: |
+      Endpoints for device certificate provisioning using pre-shared keys.
+      Used by automated systems to obtain client certificates for OpenVPN access.
+      
+      **Service Separation**: Only available on user service deployments.
+      Admin service deployments will redirect these requests to the user service.
+      
+  - name: Server Configuration
+    description: |
+      Endpoints for retrieving complete OpenVPN server configuration bundles.
+      Used by infrastructure automation to deploy and configure OpenVPN servers.
+      
+      **Service Separation**: Only available on admin service deployments.
+      User service deployments will reject these requests with 403 Forbidden.

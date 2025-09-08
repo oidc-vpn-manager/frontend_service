@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block title %}Administrate Issued Certificates - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>Administrate Issued Certificates</h1>
+    <p>View and manage all certificates issued by the OpenVPN Manager system for audit and compliance purposes.</p>
+
+    {% if request.args.get('bulk_revoked') %}
+    <div class="alert alert-success">Successfully revoked {{ request.args.get('bulk_revoked') }} certificates for user {{ request.args.get('user_id') }}</div>
+    {% endif %}
+
+    {% if stats %}
+    <div class="stats-summary" style="background: #f8f9fa; padding: 15px; margin: 15px 0; border-radius: 5px;">
+        <h3>Statistics</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <strong>Total Certificates:</strong> {{ stats.total_certificates or 0 }}
+            </div>
+            {% if stats.by_type %}
+            <div>
+                <strong>Client:</strong> {{ stats.by_type.client or 0 }}<br>
+                <strong>Server:</strong> {{ stats.by_type.server or 0 }}<br>
+                <strong>Intermediate:</strong> {{ stats.by_type.intermediate or 0 }}
+            </div>
+            {% endif %}
+            {% if stats.by_status %}
+            <div>
+                <strong>Active:</strong> {{ stats.by_status.active or 0 }}<br>
+                <strong>Revoked:</strong> {{ stats.by_status.revoked or 0 }}
+            </div>
+            {% endif %}
+            {% if stats.recent_activity %}
+            <div>
+                <strong>Issued (30 days):</strong> {{ stats.recent_activity.issued_last_30_days or 0 }}<br>
+                <strong>Expiring (30 days):</strong> {{ stats.recent_activity.expiring_next_30_days or 0 }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Filters Form -->
+    <form method="get" class="filters-form" style="background: #f0f0f0; padding: 15px; margin: 15px 0; border-radius: 5px;">
+        <h3>Filter Certificates</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 10px;">
+            <div>
+                <label for="type">Certificate Type:</label>
+                <select name="type" id="type">
+                    <option value="">All Types</option>
+                    <option value="client" {{ 'selected' if filters.type == 'client' }}>Client</option>
+                    <option value="server" {{ 'selected' if filters.type == 'server' }}>Server</option>
+                    <option value="intermediate" {{ 'selected' if filters.type == 'intermediate' }}>Intermediate</option>
+                </select>
+            </div>
+            <div>
+                <label for="subject">Subject Contains:</label>
+                <input type="text" name="subject" id="subject" data-testid="subject-filter" value="{{ filters.subject or '' }}" placeholder="e.g., user@example.com">
+            </div>
+            <div>
+                <label for="issuer">Issuer Contains:</label>
+                <input type="text" name="issuer" id="issuer" value="{{ filters.issuer or '' }}" placeholder="e.g., OpenVPN CA">
+            </div>
+            <div>
+                <label for="from_date">From Date:</label>
+                <input type="date" name="from_date" id="from_date" value="{{ filters.from_date or '' }}" 
+                       pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD">
+            </div>
+            <div>
+                <label for="to_date">To Date:</label>
+                <input type="date" name="to_date" id="to_date" value="{{ filters.to_date or '' }}" 
+                       pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD">
+            </div>
+            <div>
+                <label for="include_revoked">Include Revoked:</label>
+                <select name="include_revoked" id="include_revoked">
+                    <option value="true" {{ 'selected' if filters.include_revoked != 'false' }}>Yes</option>
+                    <option value="false" {{ 'selected' if filters.include_revoked == 'false' }}>No</option>
+                </select>
+            </div>
+            {% if session.user.get('is_auditor') %}
+            <div>
+                <label for="show_uncollapsed">Show All Records:</label>
+                <select name="show_uncollapsed" id="show_uncollapsed" title="Show all uncollapsed records including duplicates (Auditor view)">
+                    <option value="false" {{ 'selected' if filters.show_uncollapsed == 'false' }}>Collapsed (Default)</option>
+                    <option value="true" {{ 'selected' if filters.show_uncollapsed == 'true' }}>All Records</option>
+                </select>
+            </div>
+            {% endif %}
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="submit" class="button" data-testid="apply-filters">Apply Filters</button>
+            <a href="{{ url_for('admin.list_certificates') }}" class="button" style="background: #6c757d;">Clear Filters</a>
+        </div>
+    </form>
+
+    <!-- Admin Actions Section -->
+    {% if certificates and (session.user.get('is_admin') or session.user.get('is_system_admin')) %}
+    <div class="admin-actions" style="background: #fff3cd; padding: 15px; margin: 15px 0; border-radius: 5px; border: 1px solid #ffeaa7;">
+        <h3 style="color: #856404; margin-top: 0; margin-bottom: 10px;">Administrative Actions</h3>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="button" 
+                    data-testid="bulk-revoke-user" 
+                    class="button bulk-revoke-btn"
+                    style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                Bulk Revoke All User Certificates
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Results Table -->
+    {% if certificates %}
+    <div style="margin: 20px 0;">
+        <p><strong>{{ pagination.total or 0 }}</strong> certificates found 
+        {% if pagination.page and pagination.pages %}(page {{ pagination.page }} of {{ pagination.pages }}){% endif %}</p>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <thead>
+            <tr style="background: #e9ecef;">
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Subject</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Type</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Serial Number</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Issued</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Expires</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Status</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cert in certificates %}
+            <tr data-testid="certificate-row" data-issuing-user-id="{{ cert.issuing_user_id or '' }}">
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    <strong>{{ cert.subject.common_name or 'N/A' }}</strong>
+                    {% if cert.subject.common_name != cert.subject.organization %}
+                        <br><small>{{ cert.subject.organization or '' }}</small>
+                    {% endif %}
+                </td>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    <span class="cert-type cert-type-{{ cert.certificate_type or 'unknown' }}">
+                        {{ (cert.certificate_type or 'unknown').title() }}
+                    </span>
+                </td>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    <code style="font-size: 0.9em;">{{ cert.serial_number or 'N/A' }}</code>
+                </td>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    {% if cert.issued_at %}
+                        {{ cert.issued_at[:10] }}
+                        <br><small>{{ cert.issued_at[11:19] }} UTC</small>
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    {% if cert.validity and cert.validity.not_after %}
+                        {{ cert.validity.not_after[:10] }}
+                        <br><small>{{ cert.validity.not_after[11:19] }} UTC</small>
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    {% if cert.revoked_at or cert.revocation %}
+                        <span class="status-revoked" style="color: #dc3545; font-weight: bold;">Revoked</span>
+                        <br><small>
+                        {% if cert.revocation and cert.revocation.revoked_at %}
+                            {{ cert.revocation.revoked_at[:10] }}
+                        {% elif cert.revoked_at %}
+                            {{ cert.revoked_at[:10] }}
+                        {% endif %}
+                        </small>
+                    {% else %}
+                        <span class="status-active" style="color: #28a745; font-weight: bold;">Active</span>
+                    {% endif %}
+                </td>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    {% if cert.fingerprint_sha256 %}
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <a href="{{ url_for('admin.certificate_detail', fingerprint=cert.fingerprint_sha256) }}" 
+                           class="button" style="font-size: 0.9em; padding: 4px 8px;">View Details</a>
+                        
+                        {% if not (cert.revoked_at or cert.revocation) and (session.user.get('is_admin') or session.user.get('is_system_admin')) %}
+                        <button type="button"
+                                data-testid="admin-revoke-certificate"
+                                class="button admin-revoke-btn"
+                                data-fingerprint="{{ cert.fingerprint_sha256 }}"
+                                data-subject="{{ cert.subject.common_name or 'Unknown' }}"
+                                style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                            Revoke
+                        </button>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if pagination and pagination.pages and pagination.pages > 1 %}
+    <div class="pagination" style="margin: 20px 0; text-align: center;">
+        {% if pagination.has_prev %}
+            <a href="{{ url_for('admin.list_certificates', page=current_page-1, **request.args) }}" 
+               class="button">« Previous</a>
+        {% endif %}
+        
+        <span style="margin: 0 15px;">
+            Page {{ pagination.page or 1 }} of {{ pagination.pages or 1 }}
+        </span>
+        
+        {% if pagination.has_next %}
+            <a href="{{ url_for('admin.list_certificates', page=current_page+1, **request.args) }}" 
+               class="button">Next »</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div style="text-align: center; margin: 40px 0; color: #6c757d;">
+        <p>No certificates found matching the current filters.</p>
+        {% if filters %}
+        <p><a href="{{ url_for('admin.list_certificates') }}">Clear filters</a> to view all certificates.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <style>
+        .cert-type {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .cert-type-client {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .cert-type-server {
+            background: #e8f5e8;
+            color: #388e3c;
+        }
+        .cert-type-intermediate {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        .cert-type-unknown {
+            background: #f5f5f5;
+            color: #757575;
+        }
+        .filters-form label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .filters-form input, .filters-form select {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+    </style>
+
+    <!-- Bulk Revocation Dialog -->
+    <div id="bulkRevocationDialog" data-testid="bulk-revocation-dialog" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="background: white; margin: 10% auto; padding: 20px; width: 500px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+            <h3 style="color: #dc3545; margin-top: 0;">⚠️ BULK REVOKE ALL CERTIFICATES</h3>
+            <p><strong>DANGER:</strong> This will revoke ALL certificates for the selected user.</p>
+            <p style="color: #6c757d; font-size: 0.9em;">This action is <strong>IRREVERSIBLE</strong> and will immediately invalidate all OpenVPN access for the user.</p>
+            
+            <div data-testid="certificates-count" style="background: #f8d7da; padding: 10px; border-radius: 4px; margin: 15px 0;">
+                <strong>This will revoke all active certificates for the selected user.</strong>
+            </div>
+            
+            <form id="bulkRevocationForm" method="post" action="">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                
+                <div style="margin: 15px 0;">
+                    <label for="bulkRevocationUser">Target User:</label>
+                    <input type="text" id="bulkRevocationUser" data-testid="bulk-revocation-user" name="user_id" required readonly 
+                           style="width: 100%; padding: 8px; margin-top: 5px; background: #f8f9fa;" 
+                           placeholder="User will be determined from current filter">
+                </div>
+
+                <div style="margin: 15px 0;">
+                    <label for="bulkRevocationReason">Revocation Reason:</label>
+                    <select id="bulkRevocationReason" data-testid="bulk-revocation-reason" name="reason" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                        <option value="">Select a reason...</option>
+                        <option value="key_compromise">Key Compromise</option>
+                        <option value="superseded">Certificate Superseded</option>
+                        <option value="cessation_of_operation">User Access Terminated</option>
+                        <option value="affiliation_changed">Affiliation Changed</option>
+                    </select>
+                </div>
+
+                <div style="margin: 15px 0;">
+                    <label for="bulkRevocationComment">Comment (required for bulk operations):</label>
+                    <textarea id="bulkRevocationComment" data-testid="bulk-revocation-comment" name="comment" rows="3" required style="width: 100%; padding: 8px; margin-top: 5px;" placeholder="Required: Explain the reason for bulk revocation..."></textarea>
+                </div>
+
+                <div style="margin: 15px 0;">
+                    <label>
+                        <input type="checkbox" id="bulkRevocationConfirm" data-testid="bulk-revocation-confirm" required>
+                        I understand this action is IRREVERSIBLE and will affect ALL certificates for this user
+                    </label>
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" data-testid="cancel-bulk-revocation" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button type="submit" data-testid="confirm-bulk-revocation" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Revoke All Certificates</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Revocation Dialog -->
+    <div id="adminRevocationDialog" data-testid="admin-revocation-dialog" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="background: white; margin: 10% auto; padding: 20px; width: 500px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+            <h3 style="color: #dc3545; margin-top: 0;">Administrative Certificate Revocation</h3>
+            <p><strong>Are you sure</strong> you want to revoke this certificate?</p>
+            <p style="color: #6c757d; font-size: 0.9em;">This administrative revocation action cannot be undone.</p>
+            
+            <form id="adminRevocationForm" method="post" action="">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                
+                <div style="margin: 15px 0;">
+                    <label for="adminRevocationReason">Revocation Reason:</label>
+                    <select id="adminRevocationReason" data-testid="admin-revocation-reason" name="reason" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                        <option value="">Select a reason...</option>
+                        <option value="key_compromise">Key Compromise</option>
+                        <option value="ca_compromise">CA Compromise</option>
+                        <option value="affiliation_changed">Affiliation Changed</option>
+                        <option value="superseded">Superseded</option>
+                        <option value="cessation_of_operation">Cessation of Operation</option>
+                        <option value="certificate_hold">Certificate Hold</option>
+                        <option value="privilege_withdrawn">Privilege Withdrawn</option>
+                        <option value="admin_revocation">Administrative Revocation</option>
+                    </select>
+                </div>
+                
+                <div style="margin: 15px 0;">
+                    <label for="revocationComment">Comment (optional):</label>
+                    <textarea id="revocationComment" data-testid="revocation-comment" name="comment" rows="3" style="width: 100%; padding: 8px; margin-top: 5px;" placeholder="Optional comment explaining the revocation..."></textarea>
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" data-testid="cancel-admin-revocation" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button type="submit" data-testid="confirm-admin-revocation" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Revoke Certificate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='admin_cert.js') }}"></script>
+{% endblock %}

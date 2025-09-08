@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}My Certificates - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>My Certificates</h1>
+    <p>View and manage certificates issued to you by the OpenVPN Manager system.</p>
+
+    {% if certificates %}
+    <div class="certificates-list">
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead>
+                <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                    <th style="padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6;">Subject</th>
+                    <th style="padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6;">Issued</th>
+                    <th style="padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6;">Expires</th>
+                    <th style="padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6;">Status</th>
+                    <th style="padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for certificate in certificates %}
+                <tr data-testid="certificate-item" style="border-bottom: 1px solid #dee2e6;">
+                    <td style="padding: 12px;">
+                        <div style="font-weight: 500;">{{ certificate.subject.common_name or 'Unknown Subject' }}</div>
+                        <div style="font-size: 0.9em; color: #666;">{{ certificate.fingerprint_sha256[:16] }}...</div>
+                    </td>
+                    <td style="padding: 12px;">
+                        {{ certificate.issued_at[:19].replace('T', ' ') if certificate.issued_at else 'Unknown' }}
+                    </td>
+                    <td style="padding: 12px;">
+                        {% if certificate.not_after %}
+                            <span class="text-success">
+                                {{ certificate.not_after[:19].replace('T', ' ') }}
+                            </span>
+                        {% else %}
+                            Unknown
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px;">
+                        {% if certificate.revocation or certificate.revoked_at %}
+                            <span style="color: #dc3545; font-weight: 500;">Revoked</span>
+                            <div style="font-size: 0.9em; color: #666;">
+                                {% if certificate.revocation and certificate.revocation.revoked_at %}
+                                    {{ certificate.revocation.revoked_at[:19].replace('T', ' ') }}
+                                {% elif certificate.revoked_at %}
+                                    {{ certificate.revoked_at[:19].replace('T', ' ') }}
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <span style="color: #28a745; font-weight: 500;">Active</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px;">
+                        <a href="{{ url_for('profile.certificate_detail', fingerprint=certificate.fingerprint_sha256) }}" 
+                           style="margin-right: 10px; color: #007bff; text-decoration: none;">View</a>
+                        {% if not (certificate.revocation or certificate.revoked_at) %}
+                        <button type="button" 
+                                data-testid="revoke-certificate"
+                                data-fingerprint="{{ certificate.fingerprint_sha256 }}"
+                                data-subject="{{ certificate.subject.common_name or 'Unknown' }}"
+                                style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">
+                            Revoke
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="no-certificates" style="background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 5px; text-align: center;">
+        <h3>No Certificates Found</h3>
+        <p>You don't have any certificates issued yet.</p>
+        <p><a href="{{ url_for('root.index') }}" style="color: #007bff; text-decoration: none;">Generate your first OpenVPN configuration</a> to receive a certificate.</p>
+    </div>
+    {% endif %}
+
+    <div class="help-section" style="margin-top: 30px; padding: 20px; background: #e9ecef; border-radius: 5px;">
+        <h3>Certificate Management</h3>
+        <ul>
+            <li><strong>View:</strong> Click "View" to see detailed certificate information</li>
+            <li><strong>Revoke:</strong> Click "Revoke" to permanently disable a certificate if it's compromised</li>
+            <li><strong>Generate New:</strong> Visit the <a href="{{ url_for('root.index') }}">configuration page</a> to generate a new certificate</li>
+        </ul>
+        <p><strong>Note:</strong> Revoked certificates cannot be restored. You will need to generate a new certificate if needed.</p>
+    </div>
+
+    <!-- User Revocation Dialog -->
+    <div id="userRevocationDialog" data-testid="revocation-dialog" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="background: white; margin: 15% auto; padding: 20px; width: 400px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+            <h3 style="color: #dc3545; margin-top: 0;">Revoke Certificate</h3>
+            <p><strong>Are you sure</strong> you want to revoke this certificate?</p>
+            <p style="color: #6c757d; font-size: 0.9em;">This action <strong>cannot be undone</strong>. You will need to generate a new certificate if required.</p>
+            
+            <form id="userRevocationForm" method="post" action="">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                <!-- Debug: User CSRF token = {{ csrf_token }} -->
+                <div style="margin: 15px 0;">
+                    <label for="userRevocationReason">Revocation Reason:</label>
+                    <select id="userRevocationReason" data-testid="revocation-reason" name="reason" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                        <option value="">Select a reason...</option>
+                        <option value="key_compromise">Key Compromise</option>
+                        <option value="superseded">Certificate Superseded</option>
+                        <option value="cessation_of_operation">No Longer Needed</option>
+                        <option value="affiliation_changed">Affiliation Changed</option>
+                    </select>
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" data-testid="cancel-revocation" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button type="submit" data-testid="confirm-revocation" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Revoke Certificate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='profile_certificate.js') }}"></script>
+{% endblock %}

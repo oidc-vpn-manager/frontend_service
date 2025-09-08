@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Certificate Details - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>My Certificate Details</h1>
+    
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('profile.list_user_certificates') }}" class="button" style="color: #007bff; text-decoration: none; padding: 8px 16px; border: 1px solid #007bff; border-radius: 4px;">← Back to My Certificates</a>
+    </div>
+
+    {% if certificate %}
+    <div class="certificate-details" style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+        <h2 style="margin-top: 0; color: #091e42;">{{ certificate.subject.common_name or 'Unknown Subject' }}</h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
+            
+            <!-- Certificate Status -->
+            <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid {% if certificate.revocation or certificate.revoked_at %}#dc3545{% else %}#28a745{% endif %};">
+                <h4 style="margin: 0 0 10px 0; color: #091e42;">Status</h4>
+                {% if certificate.revocation or certificate.revoked_at %}
+                    <span style="color: #dc3545; font-weight: 500; font-size: 16px;">🚫 Revoked</span>
+                    <div style="margin-top: 8px; font-size: 14px; color: #666;">
+                        {% if certificate.revocation and certificate.revocation.revoked_at %}
+                            Revoked on: {{ certificate.revocation.revoked_at[:19].replace('T', ' ') }}
+                        {% elif certificate.revoked_at %}
+                            Revoked on: {{ certificate.revoked_at[:19].replace('T', ' ') }}
+                        {% endif %}
+                        {% if certificate.revocation and certificate.revocation.reason %}
+                            <br>Reason: {{ certificate.revocation.reason.replace('_', ' ').title() }}
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <span style="color: #28a745; font-weight: 500; font-size: 16px;">✓ Active</span>
+                    <div style="margin-top: 8px; font-size: 14px; color: #666;">
+                        This certificate is currently valid and active.
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- Issue & Expiry Dates -->
+            <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #17a2b8;">
+                <h4 style="margin: 0 0 10px 0; color: #091e42;">Validity Period</h4>
+                <div style="margin-bottom: 10px;">
+                    <strong>Issued:</strong> 
+                    <span style="color: #155724;">
+                        {{ certificate.issued_at[:19].replace('T', ' ') if certificate.issued_at else 'Unknown' }}
+                    </span>
+                </div>
+                <div>
+                    <strong>Expires:</strong> 
+                    {% if certificate.validity and certificate.validity.not_after %}
+                        <span style="color: #856404;">
+                            {{ certificate.validity.not_after[:19].replace('T', ' ') }}
+                        </span>
+                    {% elif certificate.not_after %}
+                        <span style="color: #856404;">
+                            {{ certificate.not_after[:19].replace('T', ' ') }}
+                        </span>
+                    {% else %}
+                        Unknown
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Certificate Identifiers -->
+            <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #6f42c1;">
+                <h4 style="margin: 0 0 10px 0; color: #091e42;">Certificate Identifiers</h4>
+                <div style="margin-bottom: 10px;">
+                    <strong>Serial Number:</strong>
+                    <div style="font-family: monospace; font-size: 12px; background: #f1f3f4; padding: 5px; border-radius: 3px; word-break: break-all; margin-top: 5px;">
+                        {{ certificate.serial_number or 'Unknown' }}
+                    </div>
+                </div>
+                <div>
+                    <strong>Fingerprint (SHA256):</strong>
+                    <div style="font-family: monospace; font-size: 12px; background: #f1f3f4; padding: 5px; border-radius: 3px; word-break: break-all; margin-top: 5px;">
+                        {{ certificate.fingerprint_sha256 or 'Unknown' }}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Certificate Purpose -->
+            <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #fd7e14;">
+                <h4 style="margin: 0 0 10px 0; color: #091e42;">Certificate Details</h4>
+                <div style="margin-bottom: 10px;">
+                    <strong>Type:</strong> {{ certificate.certificate_type or 'Unknown' }}
+                </div>
+                {% if certificate.certificate_purpose %}
+                <div style="margin-bottom: 10px;">
+                    <strong>Purpose:</strong> {{ certificate.certificate_purpose }}
+                </div>
+                {% endif %}
+                {% if certificate.issuer and certificate.issuer.common_name %}
+                <div>
+                    <strong>Issued By:</strong> {{ certificate.issuer.common_name }}
+                </div>
+                {% endif %}
+            </div>
+            
+        </div>
+        
+        <!-- Action Buttons -->
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+            {% if not (certificate.revocation or certificate.revoked_at) %}
+            <button type="button" 
+                    class="revoke-btn"
+                    data-fingerprint="{{ certificate.fingerprint_sha256 }}"
+                    data-subject="{{ certificate.subject.common_name or 'Unknown' }}"
+                    style="background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: 500;">
+                🚫 Revoke This Certificate
+            </button>
+            <p style="margin-top: 10px; font-size: 14px; color: #666;">
+                <strong>Warning:</strong> Revoking this certificate will immediately make it invalid for VPN connections.
+            </p>
+            {% else %}
+            <div style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 4px;">
+                <strong>This certificate has been revoked</strong> and can no longer be used for VPN connections.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    {% else %}
+    <div style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 4px;">
+        Certificate not found or access denied.
+    </div>
+    {% endif %}
+
+    <!-- User Revocation Dialog -->
+    <div id="userRevocationDialog" data-testid="revocation-dialog" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="background: white; margin: 15% auto; padding: 20px; width: 400px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+            <h3 style="color: #dc3545; margin-top: 0;">Revoke Certificate</h3>
+            <p><strong>Are you sure</strong> you want to revoke this certificate?</p>
+            <p style="color: #6c757d; font-size: 0.9em;">This action <strong>cannot be undone</strong>. You will need to generate a new certificate if required.</p>
+            
+            <form id="userRevocationForm" method="post" action="">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                <!-- Debug: User CSRF token = {{ csrf_token }} -->
+                <div style="margin: 15px 0;">
+                    <label for="userRevocationReason">Revocation Reason:</label>
+                    <select id="userRevocationReason" data-testid="revocation-reason" name="reason" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                        <option value="">Select a reason...</option>
+                        <option value="key_compromise">Key Compromise</option>
+                        <option value="superseded">Certificate Superseded</option>
+                        <option value="cessation_of_operation">No Longer Needed</option>
+                        <option value="affiliation_changed">Affiliation Changed</option>
+                    </select>
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" data-testid="cancel-revocation" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button type="submit" data-testid="confirm-revocation" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Revoke Certificate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='profile_certificate_detail.js') }}"></script>
+{% endblock %}

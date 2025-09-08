@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Certificate Transparency Log - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>Certificate Transparency Log</h1>
+    {% if user_role == 'auditor' %}
+        <p>Audit view of all certificates issued by the OpenVPN Manager system for compliance and transparency purposes.</p>
+    {% elif user_role == 'system_admin' %}
+        <p>System Administrator view of all certificates issued by the OpenVPN Manager system.</p>
+    {% else %}
+        <p>Administrative view of all certificates issued by the OpenVPN Manager system.</p>
+    {% endif %}
+
+    {% if error_message %}
+    <div class="alert alert-error">{{ error_message }}</div>
+    {% endif %}
+
+    {% if stats %}
+    <div class="stats-summary" style="background: #f8f9fa; padding: 15px; margin: 15px 0; border-radius: 5px;">
+        <h3>Certificate Statistics</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <strong>Total Certificates:</strong> {{ stats.total_certificates or 0 }}
+            </div>
+            {% if stats.by_type %}
+            <div>
+                <strong>Client:</strong> {{ stats.by_type.client or 0 }}<br>
+                <strong>Server:</strong> {{ stats.by_type.server or 0 }}<br>
+                <strong>Intermediate:</strong> {{ stats.by_type.intermediate or 0 }}
+            </div>
+            {% endif %}
+            {% if stats.by_status %}
+            <div>
+                <strong>Active:</strong> {{ stats.by_status.active or 0 }}<br>
+                <strong>Revoked:</strong> {{ stats.by_status.revoked or 0 }}
+            </div>
+            {% endif %}
+            {% if stats.recent_activity %}
+            <div>
+                <strong>Issued (30 days):</strong> {{ stats.recent_activity.issued_last_30_days or 0 }}<br>
+                <strong>Expiring (30 days):</strong> {{ stats.recent_activity.expiring_next_30_days or 0 }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Filters Form -->
+    <form method="get" class="filters-form" style="background: #f0f0f0; padding: 15px; margin: 15px 0; border-radius: 5px;">
+        <h3>Filter Certificates</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 10px;">
+            <div>
+                <label for="type">Certificate Type:</label>
+                <select name="type" id="type">
+                    <option value="">All Types</option>
+                    <option value="client" {{ 'selected' if filters.type == 'client' }}>Client</option>
+                    <option value="server" {{ 'selected' if filters.type == 'server' }}>Server</option>
+                    <option value="intermediate" {{ 'selected' if filters.type == 'intermediate' }}>Intermediate</option>
+                </select>
+            </div>
+            <div>
+                <label for="subject">Subject Contains:</label>
+                <input type="text" name="subject" id="subject" data-testid="subject-filter" value="{{ filters.subject or '' }}" placeholder="e.g., user@example.com">
+            </div>
+            <div>
+                <label for="issuer">Issuer Contains:</label>
+                <input type="text" name="issuer" id="issuer" value="{{ filters.issuer or '' }}" placeholder="e.g., OpenVPN CA">
+            </div>
+            <div>
+                <label for="from_date">From Date:</label>
+                <input type="date" name="from_date" id="from_date" value="{{ filters.from_date or '' }}" 
+                       pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD">
+            </div>
+            <div>
+                <label for="to_date">To Date:</label>
+                <input type="date" name="to_date" id="to_date" value="{{ filters.to_date or '' }}" 
+                       pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD">
+            </div>
+            <div>
+                <label for="include_revoked">Include Revoked:</label>
+                <select name="include_revoked" id="include_revoked">
+                    <option value="true" {{ 'selected' if filters.include_revoked != 'false' }}>Yes</option>
+                    <option value="false" {{ 'selected' if filters.include_revoked == 'false' }}>No</option>
+                </select>
+            </div>
+            {% if user_role == 'auditor' %}
+            <div>
+                <label for="show_uncollapsed">Show All Records:</label>
+                <select name="show_uncollapsed" id="show_uncollapsed" title="Show all uncollapsed records including duplicates (Auditor view)">
+                    <option value="false" {{ 'selected' if filters.show_uncollapsed == 'false' }}>Collapsed (Default)</option>
+                    <option value="true" {{ 'selected' if filters.show_uncollapsed == 'true' }}>All Records</option>
+                </select>
+            </div>
+            {% endif %}
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="submit" class="button" data-testid="apply-filters">Apply Filters</button>
+            <a href="{{ url_for('certificates.transparency_log') }}" class="button" style="background: #6c757d;">Clear Filters</a>
+        </div>
+    </form>
+
+    <!-- Certificates Table -->
+    {% if certificates %}
+    <div class="certificates-table">
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <thead>
+                <tr style="background: #f8f9fa;">
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Type</th>
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Subject</th>
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Issued</th>
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Expires</th>
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Status</th>
+                    {% if user_role in ['admin', 'system_admin'] %}
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">User ID</th>
+                    {% endif %}
+                    {% if user_role == 'auditor' %}
+                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Request Info</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for cert in certificates %}
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        <span class="cert-type cert-type-{{ cert.certificate_type or 'unknown' }}">
+                            {{ cert.certificate_type.title() if cert.certificate_type else 'Unknown' }}
+                        </span>
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        <div style="font-weight: bold;">
+                            <a href="{{ url_for('certificates.certificate_detail', fingerprint=cert.fingerprint_sha256) }}" 
+                               style="color: #007bff; text-decoration: none;">
+                                {{ cert.subject.common_name if cert.subject and cert.subject.common_name else 'N/A' }}
+                            </a>
+                        </div>
+                        {% if cert.subject and cert.subject.email_address %}
+                        <div style="font-size: 0.9em; color: #666;">{{ cert.subject.email_address }}</div>
+                        {% endif %}
+                        <div style="font-size: 0.8em; color: #999;">{{ cert.fingerprint_sha256[:16] }}...</div>
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {{ cert.not_before.split('T')[0] if cert.not_before else 'N/A' }}<br>
+                        <small style="color: #666;">{{ cert.not_before.split('T')[1][:8] if cert.not_before and 'T' in cert.not_before else '' }}</small>
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {{ cert.not_after.split('T')[0] if cert.not_after else 'N/A' }}<br>
+                        <small style="color: #666;">{{ cert.not_after.split('T')[1][:8] if cert.not_after and 'T' in cert.not_after else '' }}</small>
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {% if cert.revoked_at or cert.revocation %}
+                        <span style="color: #dc3545; font-weight: bold;">Revoked</span><br>
+                        <small style="color: #666;">{{ cert.revoked_at.split('T')[0] if cert.revoked_at else 'Unknown date' }}</small>
+                        {% else %}
+                        <span style="color: #28a745; font-weight: bold;">Active</span>
+                        {% endif %}
+                    </td>
+                    {% if user_role in ['admin', 'system_admin'] %}
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        <div style="font-size: 0.9em;">{{ cert.issuing_user_id if cert.issuing_user_id else 'System' }}</div>
+                    </td>
+                    {% endif %}
+                    {% if user_role == 'auditor' %}
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {% if cert.issuer_info %}
+                        <div style="font-size: 0.8em; color: #666;">
+                            {% if cert.issuer_info.get('request_source') %}
+                                IP: {{ cert.issuer_info.request_source }}<br>
+                            {% endif %}
+                            {% if cert.issuer_info.get('user_agent') %}
+                                UA: {{ cert.issuer_info.user_agent[:30] }}{% if cert.issuer_info.user_agent|length > 30 %}...{% endif %}
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <span style="color: #999; font-size: 0.8em;">No data</span>
+                        {% endif %}
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        {% if error_message %}
+        <p>Unable to load certificate data.</p>
+        {% else %}
+        <p>No certificates found matching the current filters.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Pagination -->
+    {% if pagination and pagination.pages and pagination.pages > 1 %}
+    <div class="pagination" style="display: flex; justify-content: center; gap: 10px; margin: 20px 0;">
+        {% if pagination.has_prev %}
+        <a href="{{ url_for('certificates.transparency_log', page=pagination.prev_num, 
+                           type=request.args.get('type', ''), 
+                           subject=request.args.get('subject', ''),
+                           issuer=request.args.get('issuer', ''),
+                           from_date=request.args.get('from_date', ''),
+                           to_date=request.args.get('to_date', ''),
+                           include_revoked=request.args.get('include_revoked', ''),
+                           show_uncollapsed=request.args.get('show_uncollapsed', ''),
+                           sort=request.args.get('sort', ''),
+                           order=request.args.get('order', '')) }}" 
+           class="button">Previous</a>
+        {% endif %}
+
+        <span style="padding: 8px 12px; background: #f8f9fa; border-radius: 4px;">
+            Page {{ pagination.page or current_page }} of {{ pagination.pages or 1 }}
+            ({{ pagination.total or 0 }} total certificates)
+        </span>
+
+        {% if pagination.has_next %}
+        <a href="{{ url_for('certificates.transparency_log', page=pagination.next_num, 
+                           type=request.args.get('type', ''), 
+                           subject=request.args.get('subject', ''),
+                           issuer=request.args.get('issuer', ''),
+                           from_date=request.args.get('from_date', ''),
+                           to_date=request.args.get('to_date', ''),
+                           include_revoked=request.args.get('include_revoked', ''),
+                           show_uncollapsed=request.args.get('show_uncollapsed', ''),
+                           sort=request.args.get('sort', ''),
+                           order=request.args.get('order', '')) }}" 
+           class="button">Next</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <style>
+        .cert-type {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .cert-type-client { background: #d1ecf1; color: #0c5460; }
+        .cert-type-server { background: #f8d7da; color: #721c24; }
+        .cert-type-intermediate { background: #fff3cd; color: #856404; }
+        .cert-type-unknown { background: #e2e3e5; color: #6c757d; }
+        
+        .button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        
+        .alert {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .filters-form label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .filters-form input, .filters-form select {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+{% endblock %}

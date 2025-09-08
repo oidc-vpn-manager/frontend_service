@@ -1,0 +1,10 @@
+pytest
+pytest-cov
+pyfakefs
+freezegun
+pytest-flask
+playwright
+pytest-playwright
+requests
+pytest-httpserver
+docker

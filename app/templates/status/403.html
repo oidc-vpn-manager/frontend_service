@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+
+{% block title %}Forbidden - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>Access Forbidden (403)</h1>
+    <p>You do not have the necessary permissions to access this page.</p>
+{% endblock %}
