@@ -153,9 +153,7 @@ def user_service_only(f):
         # and should redirect user routes to user service
         user_url_base = current_app.config.get('USER_URL_BASE')
         if user_url_base:
-            redirect_url = f"{user_url_base.rstrip('/')}{request.path}"
-            if request.query_string:
-                redirect_url += f"?{request.query_string.decode()}"
+            redirect_url = f"{user_url_base.rstrip('/')}{request.path}{'?' + request.query_string.decode() if request.query_string else ''}"
             current_app.logger.info(f"Redirecting user route to user service: {redirect_url}")
             return redirect(redirect_url, code=301)
         
@@ -212,8 +210,8 @@ def user_service_only_api(f):
 def redirect_admin_to_admin_service(f):
     """
     Decorator for routes that admin users should access on admin service.
-    If ADMIN_URL_BASE is configured and user has admin privileges,
-    redirects to admin service via bounce page.
+    If ADMIN_URL_BASE is configured, redirects to admin service via bounce page.
+    Note: This assumes admin_required decorator has already validated user permissions.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -224,19 +222,30 @@ def redirect_admin_to_admin_service(f):
         if not admin_url_base:
             return f(*args, **kwargs)  # No separation configured, proceed normally
         
-        # Check if user is logged in and has admin privileges
-        user = session.get('user', {})
-        is_admin = user.get('is_admin', False)
-        is_system_admin = user.get('is_system_admin', False)
-        is_auditor = user.get('is_auditor', False)
+        # Redirect to admin service (admin_required decorator already validated permissions)
+        redirect_url = f"{admin_url_base.rstrip('/')}{request.path}{'?' + request.query_string.decode() if request.query_string else ''}"
+        return redirect(redirect_url)
+    
+    return decorated_function
+
+
+def redirect_user_to_user_service(f):
+    """
+    Decorator for routes that should be accessed on user service.
+    If USER_URL_BASE is configured, redirects to user service via bounce page.
+    Note: This assumes login_required decorator has already validated user authentication.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        trace(current_app, 'utils.decorators.redirect_user_to_user_service.decorated_function')
         
-        if is_admin or is_system_admin or is_auditor:
-            # Redirect admin user to admin service
-            redirect_url = f"{admin_url_base.rstrip('/')}{request.path}"
-            if request.query_string:
-                redirect_url += f"?{request.query_string.decode()}"
-            return redirect(redirect_url)
+        # Only redirect if USER_URL_BASE is configured (service separation enabled)
+        user_url_base = current_app.config.get('USER_URL_BASE')
+        if not user_url_base:
+            return f(*args, **kwargs)  # No separation configured, proceed normally
         
-        return f(*args, **kwargs)
+        # Redirect to user service (login_required decorator already validated authentication)
+        target_url = f"{user_url_base.rstrip('/')}{request.path}{'?' + request.query_string.decode() if request.query_string else ''}"
+        return redirect(url_for('root.bounce_to_user', target_url=target_url))
     
     return decorated_function

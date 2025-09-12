@@ -90,8 +90,6 @@ class Config:
         self.INTERMEDIATE_CA_CERTIFICATE = loadConfigValueFromFileOrEnvironment('INTERMEDIATE_CA_CERTIFICATE', '')
 
         # OpenVPN Server Configuration
-        self.OPENVPN_SERVER_HOSTNAME = os.environ.get('OPENVPN_SERVER_HOSTNAME', 'vpn.example.org')
-        self.OPENVPN_SERVER_PORT = os.environ.get('OPENVPN_SERVER_PORT', '1194')
 
         # Signing Service (for TLS Certificates)
         self.SIGNING_SERVICE_URL = os.environ.get('SIGNING_SERVICE_URL', 'http://localhost:5001')

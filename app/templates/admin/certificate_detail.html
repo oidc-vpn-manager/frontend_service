@@ -309,6 +309,14 @@
             <form id="bulkRevocationForm" method="post" action="">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
                 <!-- Debug: Bulk CSRF token = {{ csrf_token }} -->
+                
+                <div style="margin: 15px 0;">
+                    <label for="bulkRevocationUser">Target User:</label>
+                    <input type="text" id="bulkRevocationUser" data-testid="bulk-revocation-user" name="user_id" required readonly 
+                           style="width: 100%; padding: 8px; margin-top: 5px; background: #f8f9fa;" 
+                           placeholder="User determined from certificate">
+                </div>
+
                 <div style="margin: 15px 0;">
                     <label for="bulkRevocationReason">Bulk Revocation Reason:</label>
                     <select id="bulkRevocationReason" data-testid="bulk-revocation-reason" name="reason" required style="width: 100%; padding: 8px; margin-top: 5px;">

@@ -152,3 +152,32 @@ def bounce_to_admin():
     return render_template('bounce_to_admin.html', 
                          admin_url=target_url,
                          site_name=current_app.config.get('SITE_NAME', 'VPN Service'))
+
+
+@bp.route('/bounce-to-user')
+@login_required
+def bounce_to_user():
+    """
+    Bounce page that redirects regular users to the user service.
+    Only used when service separation is configured via USER_URL_BASE.
+    """
+    trace(current_app, 'routes.root.bounce_to_user')
+    
+    user_url_base = current_app.config.get('USER_URL_BASE')
+    if not user_url_base:
+        # Service separation not configured, redirect to home
+        return redirect(url_for('root.index'))
+    
+    target_url = request.args.get('target_url')
+    if not target_url:
+        # No target specified, redirect to user home
+        target_url = user_url_base.rstrip('/')
+    
+    # Validate that target_url starts with user_url_base for security
+    if not target_url.startswith(user_url_base.rstrip('/')):
+        current_app.logger.warning(f"Invalid user redirect target: {target_url}")
+        target_url = user_url_base.rstrip('/')
+    
+    return render_template('bounce_to_user.html', 
+                         user_url=target_url,
+                         site_name=current_app.config.get('SITE_NAME', 'VPN Service'))

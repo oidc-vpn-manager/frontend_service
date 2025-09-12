@@ -13,6 +13,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function showBulkRevocationDialog(userId, subject) {
         document.getElementById('bulkRevocationForm').action = `/admin/users/${userId}/revoke-certificates`;
+        
+        // Populate the user input field
+        const userInput = document.getElementById('bulkRevocationUser');
+        if (userInput) {
+            userInput.value = subject || userId || 'Unknown User';
+        }
+        
         bulkRevocationDialog.style.display = 'block';
     }
 
