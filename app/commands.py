@@ -13,8 +13,9 @@ from app.extensions import db
 @click.option('--description', required=True, help='Description for the PSK')
 @click.option('--template-set', default='Default', help='Server template set to use (default: Default)')
 @click.option('--expires-days', type=int, help='Number of days until expiration (optional)')
+@click.option('--psk-type', type=click.Choice(['server', 'computer']), default='server', help='Type of PSK to create (default: server)')
 @with_appcontext
-def create_psk_command(description, template_set, expires_days):
+def create_psk_command(description, template_set, expires_days, psk_type):
     """Creates a new PSK (DEVELOPMENT MODE ONLY)."""
     # Security check: Only allow in development mode
     environment = current_app.config.get('ENVIRONMENT', 'production')
@@ -43,13 +44,14 @@ def create_psk_command(description, template_set, expires_days):
     plaintext_psk = str(uuid.uuid4())
     
     # Create new PSK
-    psk = PreSharedKey(description=description, template_set=template_set, expires_at=expires_at, key=plaintext_psk)
+    psk = PreSharedKey(description=description, template_set=template_set, expires_at=expires_at, key=plaintext_psk, psk_type=psk_type)
     db.session.add(psk)
     db.session.commit()
-    
+
     click.echo('=== DEVELOPMENT MODE PSK CREATED ===')
     click.echo(f'Description: {description}')
     click.echo(f'Template Set: {template_set}')
+    click.echo(f'PSK Type: {psk_type}')
     click.echo(f'PSK: {plaintext_psk}')
     if expires_at:
         click.echo(f'Expires: {expires_at.isoformat()}')

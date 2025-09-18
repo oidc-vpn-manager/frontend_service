@@ -8,7 +8,12 @@ class NewPskForm(FlaskForm):
         DataRequired(),
         Length(min=1, max=255, message="Description must be between 1 and 255 characters")
     ])
-    template_set = SelectField('Server Template Set', validate_choice=False)
+    psk_type = SelectField('PSK Type',
+                          choices=[('server', 'Server Bundle (Hub-and-spoke VPN servers)'),
+                                   ('computer', 'Computer Identity (Site-to-site, managed assets)')],
+                          default='server',
+                          validators=[DataRequired()])
+    template_set = SelectField('Template Set', validate_choice=False)
     submit = SubmitField('Create Key')
 
 class GenerateProfileForm(FlaskForm):

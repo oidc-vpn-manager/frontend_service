@@ -37,7 +37,7 @@ def test_config_generation_handles_signing_error(client, app, monkeypatch):
     THEN a graceful error page is displayed.
     """
     # Arrange: Mock the signing client to raise an error directly
-    def mock_raise_error(csr_pem, user_id=None, client_ip=None):
+    def mock_raise_error(csr_pem, user_id=None, client_ip=None, request_metadata=None):
         raise SigningServiceError('Test signing error')
 
     monkeypatch.setattr(

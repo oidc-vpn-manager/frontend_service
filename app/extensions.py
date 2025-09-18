@@ -37,6 +37,7 @@ def init_extensions(app: Flask):
         'font-src': "'self'",
         'connect-src': "'self'",
         'frame-src': "'none'",
+        'frame-ancestors': "'none'",
         'object-src': "'none'",
         'base-uri': "'self'",
         'form-action': "'self'"

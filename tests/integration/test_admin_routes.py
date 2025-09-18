@@ -22,7 +22,12 @@ def test_list_psks_page(client, app):
     # Arrange: Log in as an admin user
     app.config['OIDC_ADMIN_GROUP'] = "vpn-admins"
     with client.session_transaction() as sess:
-        sess['user'] = {'groups': ['vpn-admins']}
+        sess['user'] = {
+            'sub': 'admin-user@example.com',
+            'groups': ['vpn-admins'],
+            'name': 'Admin User',
+            'email': 'admin-user@example.com'
+        }
 
     # Act
     response = client.get('/admin/psk')
@@ -49,7 +54,12 @@ def test_create_new_psk(client, app):
     # Arrange: Log in as an admin user
     app.config['OIDC_ADMIN_GROUP'] = "vpn-admins"
     with client.session_transaction() as sess:
-        sess['user'] = {'groups': ['vpn-admins']}
+        sess['user'] = {
+            'sub': 'admin-user@example.com',
+            'groups': ['vpn-admins'],
+            'name': 'Admin User',
+            'email': 'admin-user@example.com'
+        }
 
     # Act: Access the PSK list page
     response = client.get('/admin/psk')
@@ -68,7 +78,12 @@ def test_create_new_psk_validation_error(client, app):
     # Arrange: Log in as an admin user
     app.config['OIDC_ADMIN_GROUP'] = "vpn-admins"
     with client.session_transaction() as sess:
-        sess['user'] = {'groups': ['vpn-admins']}
+        sess['user'] = {
+            'sub': 'admin-user@example.com',
+            'groups': ['vpn-admins'],
+            'name': 'Admin User',
+            'email': 'admin-user@example.com'
+        }
 
     # Act: Access the main admin page
     response = client.get('/admin/psk')
@@ -94,7 +109,12 @@ def test_revoke_psk(client, app):
     # Arrange: Log in as an admin user
     app.config['OIDC_ADMIN_GROUP'] = "vpn-admins"
     with client.session_transaction() as sess:
-        sess['user'] = {'groups': ['vpn-admins']}
+        sess['user'] = {
+            'sub': 'admin-user@example.com',
+            'groups': ['vpn-admins'],
+            'name': 'Admin User',
+            'email': 'admin-user@example.com'
+        }
 
     # Act: Submit the revoke form
     response = client.post(
@@ -120,7 +140,12 @@ def test_revoke_nonexistent_psk(client, app):
     # Arrange: Log in as an admin user
     app.config['OIDC_ADMIN_GROUP'] = "vpn-admins"
     with client.session_transaction() as sess:
-        sess['user'] = {'groups': ['vpn-admins']}
+        sess['user'] = {
+            'sub': 'admin-user@example.com',
+            'groups': ['vpn-admins'],
+            'name': 'Admin User',
+            'email': 'admin-user@example.com'
+        }
 
     # Act: Attempt to post to a revoke URL with a non-existent ID (e.g., 999)
     response = client.post('/admin/psk/999/revoke')

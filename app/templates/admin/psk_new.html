@@ -14,12 +14,20 @@
             {% endfor %}
         </div>
         <div class="form-group">
+            {{ form.psk_type.label }}
+            {{ form.psk_type(class="form-control") }}
+            {% for error in form.psk_type.errors %}
+                <span class="error">{{ error }}</span>
+            {% endfor %}
+            <small class="form-text text-muted">Choose the type of PSK: Server bundles for hub-and-spoke VPN servers, or Computer identity for site-to-site connections and managed assets.</small>
+        </div>
+        <div class="form-group">
             {{ form.template_set.label }}
             {{ form.template_set(class="form-control") }}
             {% for error in form.template_set.errors %}
                 <span class="error">{{ error }}</span>
             {% endfor %}
-            <small class="form-text text-muted">Select which server template set this PSK will use for generating server configurations.</small>
+            <small class="form-text text-muted">Select which template set this PSK will use for generating configurations.</small>
         </div>
         {{ form.submit(class="button") }}
     </form>

@@ -208,6 +208,71 @@
             {% endif %}
         </div>
 
+        <!-- Request Metadata Section -->
+        {% if certificate.requester_info %}
+        <div class="detail-section" style="margin-top: 20px;">
+            <h3>Request Metadata</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+                {% if certificate.requester_info.ip %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Requester IP:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                        {{ certificate.requester_info.ip }}
+                        {% if certificate.requester_info.country %}
+                            <span style="margin-left: 10px; color: #6c757d;">({{ certificate.requester_info.country }})</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.user_email %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">User Email:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.requester_info.user_email }}</td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.os %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Operating System:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                        {{ certificate.requester_info.os }}
+                        {% if certificate.requester_info.os_version %}
+                            {{ certificate.requester_info.os_version }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.browser %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Browser:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                        {{ certificate.requester_info.browser }}
+                        {% if certificate.requester_info.browser_version %}
+                            {{ certificate.requester_info.browser_version }}
+                        {% endif %}
+                        {% if certificate.requester_info.is_mobile %}
+                            <span style="margin-left: 10px; color: #6c757d;">(Mobile)</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.request_timestamp %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Request Time:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.requester_info.request_timestamp[:19] }} UTC</td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.user_agent %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">User Agent:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                        <code style="word-break: break-all; font-size: 0.8em;">{{ certificate.requester_info.user_agent }}</code>
+                    </td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+        {% endif %}
+
         <!-- Certificate PEM (for Auditors and System Admins) -->
         {% if user_role in ['auditor', 'system_admin'] and certificate.pem %}
         <div style="margin-top: 30px;">

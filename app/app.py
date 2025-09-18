@@ -9,14 +9,15 @@ from typing import Optional
 # Global registry to track temporary instance directories for cleanup
 _temp_instance_dirs = set()
 
-def _cleanup_temp_dirs():
+def _cleanup_temp_dirs(): # pragma: no cover
+    ## PRAGMA-NO-COVER Exception; JS 2025-09-18 Actually only needed for test suite
     """Cleanup temporary instance directories on process exit"""
     for temp_dir in list(_temp_instance_dirs):
         try:
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
             _temp_instance_dirs.discard(temp_dir)
-        except Exception:  # pragma: no cover
+        except Exception:
             # Ignore cleanup errors to avoid issues during shutdown
             pass
 
@@ -55,6 +56,10 @@ def create_app(config_name: Optional[str] = None):
     from app.extensions import init_extensions
     init_extensions(app)
 
+    # Configure structured security logging
+    from app.utils.logging_config import configure_security_logging
+    configure_security_logging(app)
+
     # Add CSRF token to template context
     @app.context_processor
     def inject_csrf_token():
@@ -67,14 +72,21 @@ def create_app(config_name: Optional[str] = None):
     from app.commands import init_commands
     init_commands(app)
 
-    # Add security headers
+    # Flask handles path traversal protection automatically through path normalization
+
+    # Add security headers (Flask-Talisman handles CSP, we add additional headers)
     @app.after_request
     def add_security_headers(response):
+        # These headers complement Flask-Talisman's CSP
         response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'DENY'
         response.headers['X-XSS-Protection'] = '1; mode=block'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
+
+        # Ensure X-Frame-Options is set (in case Talisman doesn't set it)
+        if 'X-Frame-Options' not in response.headers:
+            response.headers['X-Frame-Options'] = 'DENY'
+
         # Remove server version information
         response.headers.pop('Server', None)
         return response
@@ -82,7 +94,7 @@ def create_app(config_name: Optional[str] = None):
     return app
 
 def develop_app():
-    config_name = os.environ.get('FLASK_CONFIG', 'development') # pragma: no cover
-    app = create_app(config_name) # pragma: no cover
+    config_name = os.environ.get('FLASK_CONFIG', 'development')
+    app = create_app(config_name)
 
-    return app # pragma: no cover
+    return app

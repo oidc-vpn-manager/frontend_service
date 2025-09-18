@@ -4,7 +4,7 @@ Unit tests for configuration loading functions.
 
 import os
 import pytest
-from app.config import loadConfigValueFromFileOrEnvironment, loadBoolConfigValue, Config
+from app.config import loadConfigValueFromFileOrEnvironment, loadBoolConfigValue, Config, DevelopmentConfig
 
 def _setup_mock_tls_key(monkeypatch, tmp_path):
     """Helper function to create mock certificate and key files for config reload tests."""
@@ -309,3 +309,38 @@ def test_missing_encryption_key_raises_runtime_error(monkeypatch, tmp_path):
     
     with pytest.raises(RuntimeError, match="FERNET_ENCRYPTION_KEY must be set"):
         Config()
+
+
+class TestDevelopmentConfig:
+    """Test DevelopmentConfig specific functionality."""
+
+    def test_dev_database_uri_setting(self, monkeypatch, tmp_path):
+        """Test DevelopmentConfig with DEV_DATABASE_URI set - covers line 140."""
+        _setup_mock_tls_key(monkeypatch, tmp_path)
+
+        # Set DEV_DATABASE_URI to trigger line 140
+        custom_db_uri = "postgresql://dev:password@localhost/devdb"
+        monkeypatch.setenv('DEV_DATABASE_URI', custom_db_uri)
+
+        # Ensure TESTING is not set to 'True'
+        monkeypatch.delenv('TESTING', raising=False)
+
+        config = DevelopmentConfig()
+
+        # Should use the DEV_DATABASE_URI (line 140)
+        assert config.SQLALCHEMY_DATABASE_URI == custom_db_uri
+
+    def test_fallback_database_uri(self, monkeypatch, tmp_path):
+        """Test DevelopmentConfig fallback to in-memory SQLite - covers lines 141-143."""
+        _setup_mock_tls_key(monkeypatch, tmp_path)
+
+        # Clear all database-related environment variables
+        monkeypatch.delenv('TESTING', raising=False)
+        monkeypatch.delenv('DEV_DATABASE_URI', raising=False)
+        monkeypatch.delenv('DATABASE_TYPE', raising=False)
+        monkeypatch.delenv('DATABASE_URL', raising=False)
+
+        config = DevelopmentConfig()
+
+        # Should fallback to in-memory SQLite (lines 141-143)
+        assert config.SQLALCHEMY_DATABASE_URI == 'sqlite:///:memory:'

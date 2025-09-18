@@ -103,3 +103,25 @@ class TestAuthCoverage:
         response = client.get('/auth/callback')
         # Should redirect to stored URL
         assert response.status_code == 302
+
+    def test_callback_authentication_exception_handling_coverage(self, app, mock_oauth):
+        """Test callback route exception handling - covers lines 132-142."""
+        client = app.test_client()
+
+        # Mock OAuth to throw an exception during token exchange
+        mock_oauth.oidc.authorize_access_token.side_effect = Exception("OIDC provider error")
+
+        with patch('app.routes.auth.security_logger.log_authentication_attempt') as mock_log_auth:
+            response = client.get('/auth/callback')
+
+            # Should redirect to login page on error
+            assert response.status_code == 302
+            assert response.location.endswith('/auth/login')
+
+            # Should log authentication failure
+            mock_log_auth.assert_called_once_with(
+                user_id="unknown",
+                success=False,
+                method="oidc",
+                failure_reason="OIDC provider error"
+            )

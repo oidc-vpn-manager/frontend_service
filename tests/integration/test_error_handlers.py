@@ -42,7 +42,3 @@ def test_404_not_found_error(client):
     response = client.get("/this-page-does-not-exist")
     assert response.status_code == 404
     assert b"Page Not Found (404)" in response.data
-
-# Note: 500 error handler testing removed due to Flask test client exception propagation.
-# The error handler is still active and can be verified through manual testing or 
-# by adding `# pragma: no cover` to the handler if it affects coverage metrics.

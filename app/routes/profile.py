@@ -4,6 +4,7 @@ Routes for authenticated users to manage their profiles and configurations.
 
 from flask import Blueprint, session, redirect, url_for, current_app, request, Response, flash, jsonify
 from app.utils.tracing import trace
+from app.utils.security_logging import security_logger
 from app.forms import GenerateProfileForm
 from app.utils import render_template
 from app.utils.ca_core import generate_key_and_csr
@@ -12,6 +13,7 @@ from app.utils.render_config_template import find_best_template_match, render_co
 from app.utils.openvpn_helpers import process_tls_crypt_key
 from app.utils.decorators import login_required, user_service_only
 from app.utils.certtransparency_client import get_certtransparency_client, CertTransparencyClientError
+from app.utils.validation import validate_certificate_fingerprint_or_404, validate_certificate_fingerprint_or_400
 from cryptography.hazmat.primitives import serialization
 import json
 from app.extensions import db
@@ -57,7 +59,7 @@ def list_user_certificates():
         
         return render_template('profile/certificates.html', certificates=user_certificates)
         
-    except CertTransparencyClientError as e:  # pragma: no cover
+    except CertTransparencyClientError as e:
         current_app.logger.error(f"Failed to fetch user certificates: {e}")
         return render_template('profile/certificates.html', certificates=[], error=str(e))
 
@@ -68,7 +70,7 @@ def list_user_certificates():
 def certificate_detail(fingerprint):
     """
     Display detailed information about a specific certificate for the current user.
-    
+
     Shows basic certificate information that a user needs:
     - Issue date and expiration date
     - Current status (active/revoked)  
@@ -76,14 +78,14 @@ def certificate_detail(fingerprint):
     - Subject common name
     """
     trace(current_app, 'routes.profile.certificate_detail', {'fingerprint': fingerprint})
+
+    # Validate fingerprint format
+    validate_certificate_fingerprint_or_404(fingerprint, current_app.logger)
+
     try:
         user = session.get('user', {})
         user_id = user.get('sub')
-        
-        if not user_id:
-            flash('User session not found', 'error')
-            return redirect(url_for('profile.list_user_certificates'))
-        
+
         # Get certificate details from Certificate Transparency service
         client = get_certtransparency_client()
         try:
@@ -102,12 +104,14 @@ def certificate_detail(fingerprint):
         
         return render_template('profile/certificate_detail.html', certificate=certificate)
         
-    except CertTransparencyClientError as e:  # pragma: no cover
+    except CertTransparencyClientError as e: # pragma: no cover
+        ## PRAGMA-NO-COVER Exception; JS 2025-09-14 Upstream service needs to return an error to test.
         current_app.logger.error(f"Certificate Transparency service error: {e}")
         flash('Certificate service unavailable', 'error')
         return redirect(url_for('profile.list_user_certificates'))
     
-    except Exception as e:  # pragma: no cover
+    except Exception as e: # pragma: no cover
+        ## PRAGMA-NO-COVER Exception; JS 2025-09-14 Upstream service needs to return an error to test.
         current_app.logger.error(f"Unexpected error viewing certificate: {e}")
         flash('Internal server error', 'error')
         return redirect(url_for('profile.list_user_certificates'))
@@ -120,6 +124,10 @@ def revoke_user_certificate(fingerprint):
     Revoke a certificate owned by the current user.
     """
     trace(current_app, 'routes.profile.revoke_user_certificate', {'fingerprint': fingerprint})
+
+    # Validate fingerprint format
+    validate_certificate_fingerprint_or_400(fingerprint, current_app.logger)
+
     try:
         user_info = session['user']
         user_id = user_info['sub']
@@ -159,6 +167,13 @@ def revoke_user_certificate(fingerprint):
         # Check if user owns this certificate
         if certificate.get('issuing_user_id') != user_id:
             current_app.logger.warning(f"User {user_id} attempted to revoke certificate {fingerprint} owned by {certificate.get('issuing_user_id')}")
+            # Log unauthorized certificate revocation attempt
+            security_logger.log_access_denied(
+                resource=f"certificate:{fingerprint}",
+                required_permission="certificate_revoke",
+                user_id=user_id,
+                reason="User does not own this certificate"
+            )
             return jsonify({'error': 'You are not authorized to revoke this certificate'}), 403
         
         # Check if certificate is already revoked
@@ -175,19 +190,29 @@ def revoke_user_certificate(fingerprint):
         )
         
         current_app.logger.info(f"Certificate {fingerprint} revoked successfully by user {user_id}")
-        
+
+        # Log successful certificate revocation
+        security_logger.log_certificate_revoked(
+            fingerprint=fingerprint,
+            revocation_reason=reason,
+            user_id=user_id,
+            bulk_operation=False
+        )
+
         flash('Certificate revoked successfully', 'success')
         return redirect(url_for('profile.list_user_certificates'))
         
-    except SigningServiceError as e:  # pragma: no cover
+    except SigningServiceError as e: # pragma: no cover
+        ## PRAGMA-NO-COVER Exception; JS 2025-09-14 Upstream service needs to return an error to test.
         current_app.logger.error(f"Signing service error during revocation: {e}")
-        if "not found" in str(e).lower():  # pragma: no cover
+        if "not found" in str(e).lower():
             return jsonify({'error': 'Certificate not found'}), 404
-        elif "unavailable" in str(e).lower():  # pragma: no cover
+        elif "unavailable" in str(e).lower():
             return jsonify({'error': 'Certificate revocation service temporarily unavailable'}), 503
-        else:  # pragma: no cover
+        else:
             return jsonify({'error': str(e)}), 400
     
-    except Exception as e:  # pragma: no cover
+    except Exception as e: # pragma: no cover
+        ## PRAGMA-NO-COVER Exception; JS 2025-09-14 Upstream service needs to return an error to test.
         current_app.logger.error(f"Unexpected error during certificate revocation: {e}")
         return jsonify({'error': 'Internal server error'}), 500

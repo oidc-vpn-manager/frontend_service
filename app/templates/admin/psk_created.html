@@ -5,7 +5,7 @@
 {% block content %}
     <h1>Pre-Shared Key Created Successfully</h1>
     <div class="alert alert-success">
-        <p><strong>✅ Success!</strong> Your Pre-Shared Key for "{{ description }}" has been created using the "{{ template_set }}" template set.</p>
+        <p><strong>✅ Success!</strong> Your {{ psk_type.title() }} Pre-Shared Key for "{{ description }}" has been created using the "{{ template_set }}" template set.</p>
     </div>
 
     <div class="security-warning" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 20px; margin: 20px 0;">
@@ -17,17 +17,34 @@
 
         <p>To use this Pre-Shared Key (PSK) on your server, follow these steps:</p>
         
-        <h4>1. Download the script</h4>
+        <h4>1. Download the appropriate script</h4>
+        {% if psk_type == 'server' %}
         <div class="command-block">
-            <code id="curlCommand">curl -O https://raw.githubusercontent.com/openvpn-manager/get-openvpn-config/refs/heads/main/get_openvpn_config.py</code>
+            <code id="curlCommand">curl -O https://raw.githubusercontent.com/openvpn-manager/get-openvpn-config/refs/heads/main/get_openvpn_server_config.py</code>
             <button type="button" class="copy-button" data-target-id="curlCommand">Copy</button>
         </div>
+        {% else %}
+        <div class="command-block">
+            <code id="curlCommand">curl -O https://raw.githubusercontent.com/openvpn-manager/get-openvpn-config/refs/heads/main/get_openvpn_computer_config.py</code>
+            <button type="button" class="copy-button" data-target-id="curlCommand">Copy</button>
+        </div>
+        {% endif %}
 
         <h4>2. Run the script with your PSK</h4>
+        {% if psk_type == 'server' %}
+        <p><strong>Server Bundle:</strong> Use this command to download the server configuration bundle:</p>
         <div class="command-block">
-            <code id="pythonCommand">python3 get_openvpn_config.py get-psk-profile --psk {{ psk }} --server-url {{ server_url }}</code>
+            <code id="pythonCommand">python3 get_openvpn_server_config.py --psk {{ psk }} --server-url {{ server_url }}</code>
             <button type="button" class="copy-button" data-target-id="pythonCommand">Copy</button>
         </div>
+        {% else %}
+        <p><strong>Computer Identity:</strong> Use this command to download the computer identity configuration bundle:</p>
+        <div class="command-block">
+            <code id="pythonCommand">python3 get_openvpn_computer_config.py --psk {{ psk }} --server-url {{ server_url }}</code>
+            <button type="button" class="copy-button" data-target-id="pythonCommand">Copy</button>
+        </div>
+        <p><em>Note: Computer identity PSKs are designed for site-to-site VPN connections and managed remote assets.</em></p>
+        {% endif %}
 
         <div class="security-warning">
             <p><strong>⚠️ Security Note:</strong> This PSK is sensitive information. Keep it secure and do not share it with unauthorized users.</p>

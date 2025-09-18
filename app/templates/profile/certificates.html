@@ -22,7 +22,7 @@
                 {% for certificate in certificates %}
                 <tr data-testid="certificate-item" style="border-bottom: 1px solid #dee2e6;">
                     <td style="padding: 12px;">
-                        <div style="font-weight: 500;">{{ certificate.subject.common_name or 'Unknown Subject' }}</div>
+                        <div style="font-weight: 500;">{{ certificate.subject_cn or certificate.subject.common_name or 'Unknown Subject' }}</div>
                         <div style="font-size: 0.9em; color: #666;">{{ certificate.fingerprint_sha256[:16] }}...</div>
                     </td>
                     <td style="padding: 12px;">
@@ -58,7 +58,7 @@
                         <button type="button" 
                                 data-testid="revoke-certificate"
                                 data-fingerprint="{{ certificate.fingerprint_sha256 }}"
-                                data-subject="{{ certificate.subject.common_name or 'Unknown' }}"
+                                data-subject="{{ certificate.subject_cn or certificate.subject.common_name or 'Unknown' }}"
                                 style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">
                             Revoke
                         </button>

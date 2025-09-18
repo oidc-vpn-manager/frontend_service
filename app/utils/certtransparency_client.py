@@ -327,15 +327,15 @@ class CertTransparencyClient:
     def bulk_revoke_user_certificates(self, user_id: str, reason: str, revoked_by: str) -> Dict[str, Any]:
         """
         Bulk revoke all active certificates for a specific user.
-        
+
         Args:
             user_id (str): ID of the user whose certificates should be revoked
             reason (str): Reason for bulk revocation
             revoked_by (str): User ID who is performing the revocation
-            
+
         Returns:
             Dict containing bulk revocation results
-            
+
         Raises:
             CertTransparencyClientError: If request fails
         """
@@ -354,7 +354,7 @@ class CertTransparencyClient:
             'reason': reason,
             'revoked_by': revoked_by
         }
-        
+
         try:
             response = requests.post(url, json=data, timeout=self.timeout)
             response.raise_for_status()
@@ -362,6 +362,165 @@ class CertTransparencyClient:
         except requests.RequestException as e:
             current_app.logger.error(f"Bulk certificate revocation request failed: {e}")
             raise CertTransparencyClientError(f"Failed to bulk revoke certificates: {e}")
+
+    def bulk_revoke_computer_certificates(self, psk_filter: str, reason: str, revoked_by: str) -> Dict[str, Any]:
+        """
+        Bulk revoke all active computer certificates matching PSK criteria.
+
+        Args:
+            psk_filter (str): PSK description or fragment to match certificates
+            reason (str): Reason for bulk revocation
+            revoked_by (str): User ID who is performing the revocation
+
+        Returns:
+            Dict containing bulk revocation results
+
+        Raises:
+            CertTransparencyClientError: If request fails
+        """
+        trace(
+            current_app,
+            'utils.certtransparency_client.CertTransparencyClient.bulk_revoke_computer_certificates',
+            {
+                'self': 'SELF',
+                'psk_filter': psk_filter,
+                'reason': reason,
+                'revoked_by': revoked_by
+            }
+        )
+        url = f"{self.base_url}/computer-certificates/bulk-revoke"
+        data = {
+            'psk_filter': psk_filter,
+            'reason': reason,
+            'revoked_by': revoked_by
+        }
+
+        try:
+            response = requests.post(url, json=data, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            current_app.logger.error(f"Bulk computer certificate revocation request failed: {e}")
+            raise CertTransparencyClientError(f"Failed to bulk revoke computer certificates: {e}")
+
+    def bulk_revoke_by_ca(self, ca_issuer: str, reason: str, revoked_by: str) -> Dict[str, Any]:
+        """
+        Bulk revoke all active certificates issued by a specific CA.
+
+        Args:
+            ca_issuer (str): Issuer common name or identifier
+            reason (str): Reason for bulk revocation
+            revoked_by (str): User ID who is performing the revocation
+
+        Returns:
+            Dict containing bulk revocation results
+
+        Raises:
+            CertTransparencyClientError: If request fails
+        """
+        trace(
+            current_app,
+            'utils.certtransparency_client.CertTransparencyClient.bulk_revoke_by_ca',
+            {
+                'self': 'SELF',
+                'ca_issuer': ca_issuer,
+                'reason': reason,
+                'revoked_by': revoked_by
+            }
+        )
+        url = f"{self.base_url}/certificates/bulk-revoke-by-ca"
+        data = {
+            'ca_issuer': ca_issuer,
+            'reason': reason,
+            'revoked_by': revoked_by
+        }
+
+        try:
+            response = requests.post(url, json=data, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            current_app.logger.error(f"Bulk CA certificate revocation request failed: {e}")
+            raise CertTransparencyClientError(f"Failed to bulk revoke certificates by CA: {e}")
+
+    def list_user_certificates(self, user_email: str, include_revoked: bool = True,
+                              active_only: bool = False, revoked_only: bool = False) -> Dict[str, Any]:
+        """
+        List all certificates for a specific user email address.
+
+        Args:
+            user_email: User email address
+            include_revoked: Include revoked certificates (default: True)
+            active_only: Return only active certificates
+            revoked_only: Return only revoked certificates
+
+        Returns:
+            Dict containing list of user certificates
+        """
+        trace(
+            current_app,
+            'utils.certtransparency_client.CertTransparencyClient.list_user_certificates',
+            {
+                'self': 'SELF',
+                'user_email': user_email,
+                'include_revoked': include_revoked,
+                'active_only': active_only,
+                'revoked_only': revoked_only
+            }
+        )
+        params = {
+            'subject': user_email,
+            'include_revoked': str(include_revoked).lower(),
+            'limit': 10000  # Large limit for complete user certificate listing
+        }
+
+        if active_only:
+            params['active_only'] = 'true'
+        elif revoked_only:
+            params['revoked_only'] = 'true'
+
+        return self._make_request('certificates', params=params)
+
+    def list_computer_certificates(self, psk_filter: str = None, include_revoked: bool = True,
+                                  active_only: bool = False, revoked_only: bool = False) -> Dict[str, Any]:
+        """
+        List computer certificates, optionally filtered by PSK criteria.
+
+        Args:
+            psk_filter: PSK description or fragment to match certificates (optional)
+            include_revoked: Include revoked certificates (default: True)
+            active_only: Return only active certificates
+            revoked_only: Return only revoked certificates
+
+        Returns:
+            Dict containing list of computer certificates
+        """
+        trace(
+            current_app,
+            'utils.certtransparency_client.CertTransparencyClient.list_computer_certificates',
+            {
+                'self': 'SELF',
+                'psk_filter': psk_filter,
+                'include_revoked': include_revoked,
+                'active_only': active_only,
+                'revoked_only': revoked_only
+            }
+        )
+        params = {
+            'type': 'computer',
+            'include_revoked': str(include_revoked).lower(),
+            'limit': 10000  # Large limit for complete computer certificate listing
+        }
+
+        if psk_filter:
+            params['subject'] = f"computer-{psk_filter}"
+
+        if active_only:
+            params['active_only'] = 'true'
+        elif revoked_only:
+            params['revoked_only'] = 'true'
+
+        return self._make_request('certificates', params=params)
 
 
 def get_certtransparency_client() -> CertTransparencyClient:

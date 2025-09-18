@@ -431,7 +431,79 @@ class TestCertificateTransparencyViewing:
             with client.session_transaction() as sess:
                 sess.update(auditor_session)
 
-            response = client.get('/certificates/test-fingerprint-123')
+            response = client.get('/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF')
             
             assert response.status_code == 500
             # Should render error page (exact content may vary based on template)
+
+    @patch('app.routes.certificates.get_certtransparency_client')
+    def test_transparency_log_invalid_page_parameter_valueerror(self, mock_ct_client, app, auditor_session):
+        """Test transparency log with invalid page parameter causing ValueError - lines 33-34."""
+        mock_ct_instance = MagicMock()
+        mock_ct_client.return_value = mock_ct_instance
+        mock_ct_instance.list_certificates.return_value = {
+            'certificates': [],
+            'pagination': {'page': 1, 'pages': 0, 'total': 0},
+            'filters': {}
+        }
+        mock_ct_instance.get_statistics.return_value = {}
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess.update(auditor_session)
+
+            # Test with invalid page parameter that causes ValueError when converted to int
+            response = client.get('/certificates/?page=invalid_number')
+
+            assert response.status_code == 200
+            # Should default to page 1 due to exception handling
+            call_args = mock_ct_instance.list_certificates.call_args
+            assert call_args[1]['page'] == 1  # Should default to 1 despite invalid input
+
+    @patch('app.routes.certificates.get_certtransparency_client')
+    def test_transparency_log_invalid_limit_parameter_typeerror(self, mock_ct_client, app, auditor_session):
+        """Test transparency log with invalid limit parameter causing TypeError - lines 38-39."""
+        mock_ct_instance = MagicMock()
+        mock_ct_client.return_value = mock_ct_instance
+        mock_ct_instance.list_certificates.return_value = {
+            'certificates': [],
+            'pagination': {'page': 1, 'pages': 0, 'total': 0},
+            'filters': {}
+        }
+        mock_ct_instance.get_statistics.return_value = {}
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess.update(auditor_session)
+
+            # Test with limit parameter that causes TypeError when converted to int
+            response = client.get('/certificates/?limit=not_a_number')
+
+            assert response.status_code == 200
+            # Should default to limit 50 due to exception handling
+            call_args = mock_ct_instance.list_certificates.call_args
+            assert call_args[1]['limit'] == 50  # Should default to 50 despite invalid input
+
+    @patch('app.routes.certificates.get_certtransparency_client')
+    def test_certificate_detail_certificate_not_found_with_logging(self, mock_ct_client, app, auditor_session):
+        """Test certificate detail when certificate is not found with warning logging - lines 128-129."""
+        mock_ct_instance = MagicMock()
+        mock_ct_client.return_value = mock_ct_instance
+        # Mock response where certificate is None (not just missing key)
+        mock_ct_instance.get_certificate_by_fingerprint.return_value = {'certificate': None}
+
+        # Mock the Flask app logger to capture the warning call
+        with patch.object(app.logger, 'warning') as mock_warning:
+            with app.test_client() as client:
+                with client.session_transaction() as sess:
+                    sess.update(auditor_session)
+
+                # Use a valid SHA256 fingerprint format (64 hex characters, all hex digits)
+                valid_fingerprint = 'AAAAAAAA1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF12345678'
+                response = client.get(f'/certificates/{valid_fingerprint}')
+
+                # Should return 404 status and custom 404 template
+                assert response.status_code == 404
+
+                # Should have called warning with the specific message (line 128)
+                mock_warning.assert_called_once_with(f'Certificate not found: {valid_fingerprint}')

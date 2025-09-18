@@ -74,3 +74,26 @@ class TestErrorHandlersCoverage:
             response = client.get('/profile/nonexistent')  # Non-admin route
             # Should return standard 403 response
             assert response.status_code in [403, 404]  # Either forbidden or not found
+
+    def test_internal_server_error_handler_coverage(self, client, app):
+        """Test 500 error handler - covers routes/__init__.py line 29."""
+        from werkzeug.exceptions import InternalServerError
+
+        with patch('app.routes.render_template') as mock_render:
+            mock_render.return_value = "500 Error Page"
+
+            # Get the error handler function directly from the Flask app
+            error_handler = app.error_handler_spec[None][500][InternalServerError]
+
+            # Create a mock exception
+            mock_exception = InternalServerError("Test internal server error")
+
+            # Call the error handler directly
+            with app.test_request_context():
+                result = error_handler(mock_exception)
+
+                # Should return tuple with template and status code
+                assert result[1] == 500
+
+                # Should call render_template with 500.html template
+                mock_render.assert_called_with('status/500.html')

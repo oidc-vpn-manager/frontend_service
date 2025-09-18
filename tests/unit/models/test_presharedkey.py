@@ -89,3 +89,38 @@ class TestPreSharedKey:
             
             # Key should now be disabled
             assert key.is_enabled is False
+
+    def test_default_psk_type_is_server(self, app):
+        """Tests that PSKs default to 'server' type."""
+        with app.app_context():
+            psk = PreSharedKey(description="test-server")
+            assert psk.psk_type == 'server'
+            assert psk.is_server_psk() is True
+            assert psk.is_computer_psk() is False
+
+    def test_computer_psk_type(self, app):
+        """Tests creating a computer-identity PSK."""
+        with app.app_context():
+            psk = PreSharedKey(description="test-computer", psk_type="computer")
+            assert psk.psk_type == 'computer'
+            assert psk.is_computer_psk() is True
+            assert psk.is_server_psk() is False
+
+    def test_get_certificate_type_server(self, app):
+        """Tests get_certificate_type for server PSKs."""
+        with app.app_context():
+            psk = PreSharedKey(description="test-server", psk_type="server")
+            assert psk.get_certificate_type() == 'server'
+
+    def test_get_certificate_type_computer(self, app):
+        """Tests get_certificate_type for computer PSKs."""
+        with app.app_context():
+            psk = PreSharedKey(description="test-computer", psk_type="computer")
+            assert psk.get_certificate_type() == 'computer'
+
+    def test_get_certificate_type_default(self, app):
+        """Tests get_certificate_type with default PSK type."""
+        with app.app_context():
+            psk = PreSharedKey(description="test-default")
+            # Should default to server type
+            assert psk.get_certificate_type() == 'server'

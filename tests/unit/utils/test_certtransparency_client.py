@@ -4,12 +4,12 @@ Unit tests for Certificate Transparency client utility.
 
 import pytest
 import requests
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 from flask import Flask
 
 from app.utils.certtransparency_client import (
-    CertTransparencyClient, 
-    CertTransparencyClientError, 
+    CertTransparencyClient,
+    CertTransparencyClientError,
     get_certtransparency_client
 )
 
@@ -421,6 +421,240 @@ class TestCertTransparencyClient:
             
             with pytest.raises(CertTransparencyClientError) as exc_info:
                 client.bulk_revoke_user_certificates('testuser', 'user_terminated', 'admin')
-            
+
             assert "Failed to bulk revoke certificates" in str(exc_info.value)
             assert "HTTP 500 Internal Server Error" in str(exc_info.value)
+
+    @patch('app.utils.certtransparency_client.requests.post')
+    def test_bulk_revoke_computer_certificates_success(self, mock_post, app):
+        """Test successful bulk computer certificate revocation."""
+        mock_response = Mock()
+        mock_response.json.return_value = {'revoked_count': 5, 'message': 'Success'}
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        with app.app_context():
+            client = CertTransparencyClient()
+            result = client.bulk_revoke_computer_certificates('test-psk-*', 'device_compromise', 'admin')
+
+            assert result['revoked_count'] == 5
+            mock_post.assert_called_once_with(
+                'http://certtransparency:8400/computer-certificates/bulk-revoke',
+                json={
+                    'psk_filter': 'test-psk-*',
+                    'reason': 'device_compromise',
+                    'revoked_by': 'admin'
+                },
+                timeout=30
+            )
+
+    @patch('app.utils.certtransparency_client.requests.post')
+    def test_bulk_revoke_computer_certificates_request_error(self, mock_post, app):
+        """Test error handling in bulk computer certificate revocation."""
+        mock_post.side_effect = requests.RequestException("Connection timeout")
+
+        with app.app_context():
+            client = CertTransparencyClient()
+
+            with pytest.raises(CertTransparencyClientError) as exc_info:
+                client.bulk_revoke_computer_certificates('test-psk-*', 'device_compromise', 'admin')
+
+            assert "Failed to bulk revoke computer certificates" in str(exc_info.value)
+            assert "Connection timeout" in str(exc_info.value)
+
+    @patch('app.utils.certtransparency_client.requests.post')
+    def test_bulk_revoke_by_ca_success(self, mock_post, app):
+        """Test successful bulk revocation by CA issuer."""
+        mock_response = Mock()
+        mock_response.json.return_value = {'revoked_count': 12, 'message': 'CA revocation successful'}
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        with app.app_context():
+            client = CertTransparencyClient()
+            result = client.bulk_revoke_by_ca('CN=Test CA,O=Example Corp', 'ca_compromise', 'system')
+
+            assert result['revoked_count'] == 12
+            mock_post.assert_called_once_with(
+                'http://certtransparency:8400/certificates/bulk-revoke-by-ca',
+                json={
+                    'ca_issuer': 'CN=Test CA,O=Example Corp',
+                    'reason': 'ca_compromise',
+                    'revoked_by': 'system'
+                },
+                timeout=30
+            )
+
+    @patch('app.utils.certtransparency_client.requests.post')
+    def test_bulk_revoke_by_ca_request_error(self, mock_post, app):
+        """Test error handling in bulk revocation by CA."""
+        mock_post.side_effect = requests.RequestException("Invalid CA DN")
+
+        with app.app_context():
+            client = CertTransparencyClient()
+
+            with pytest.raises(CertTransparencyClientError) as exc_info:
+                client.bulk_revoke_by_ca('CN=Invalid CA', 'ca_compromise', 'system')
+
+            assert "Failed to bulk revoke certificates by CA" in str(exc_info.value)
+            assert "Invalid CA DN" in str(exc_info.value)
+
+    @patch('app.utils.certtransparency_client.requests.get')
+    def test_list_user_certificates_with_all_filters_success(self, mock_get, app):
+        """Test list_user_certificates method with all filters to cover lines 460-482."""
+        mock_response = Mock()
+        mock_response.json.return_value = {'certificates': [{'serial': '123', 'status': 'active'}]}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with app.app_context():
+            client = CertTransparencyClient()
+            result = client.list_user_certificates(
+                user_email='test@example.com',
+                include_revoked=False,
+                active_only=True,
+                revoked_only=False
+            )
+
+            assert len(result['certificates']) == 1
+            mock_get.assert_called_once_with(
+                'http://certtransparency:8400/certificates',
+                params={
+                    'subject': 'test@example.com',
+                    'include_revoked': 'false',
+                    'limit': 10000,
+                    'active_only': 'true'
+                },
+                timeout=30
+            )
+
+    @patch('app.utils.certtransparency_client.requests.get')
+    def test_list_computer_certificates_with_all_filters_success(self, mock_get, app):
+        """Test list_computer_certificates method with all filters to cover lines 498-523."""
+        mock_response = Mock()
+        mock_response.json.return_value = {'certificates': [{'serial': '456', 'psk': 'test-psk'}]}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with app.app_context():
+            client = CertTransparencyClient()
+            result = client.list_computer_certificates(
+                psk_filter='test-*',
+                include_revoked=True,
+                active_only=False,
+                revoked_only=True
+            )
+
+            assert len(result['certificates']) == 1
+            mock_get.assert_called_once_with(
+                'http://certtransparency:8400/certificates',
+                params={
+                    'type': 'computer',
+                    'include_revoked': 'true',
+                    'limit': 10000,
+                    'subject': 'computer-test-*',
+                    'revoked_only': 'true'
+                },
+                timeout=30
+            )
+
+
+class TestCerttransparencyClientCoverageGaps:
+    """Test remaining coverage gaps in certtransparency client."""
+
+    @patch('app.utils.certtransparency_client.requests.get')
+    def test_list_user_certificates_revoked_only_elif_branch(self, mock_get, app):
+        """Test list_user_certificates with revoked_only=True (lines 479-480)."""
+        # Mock successful response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'certificates': []}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with app.app_context():
+            # Create client instance and call with revoked_only=True (and active_only=False to hit elif branch)
+            client = CertTransparencyClient()
+            result = client.list_user_certificates(
+                user_email='test@example.com',
+                active_only=False,  # Ensure this is False to hit elif branch
+                revoked_only=True   # This should hit the elif branch
+            )
+
+        # Verify request was made with correct parameters
+        mock_get.assert_called_once_with(
+            'http://certtransparency:8400/certificates',
+            params={
+                'subject': 'test@example.com',
+                'include_revoked': 'true',
+                'limit': 10000,
+                'revoked_only': 'true'  # This tests the elif branch
+            },
+            timeout=30
+        )
+
+        assert result == {'certificates': []}
+
+    @patch('app.utils.certtransparency_client.requests.get')
+    def test_list_computer_certificates_revoked_only_elif_branch(self, mock_get, app):
+        """Test list_computer_certificates with revoked_only=True (lines 519-520)."""
+        # Mock successful response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'certificates': []}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with app.app_context():
+            # Create client instance and call with revoked_only=True (and active_only=False to hit elif branch)
+            client = CertTransparencyClient()
+            result = client.list_computer_certificates(
+                active_only=False,  # Ensure this is False to hit elif branch
+                revoked_only=True   # This should hit the elif branch
+            )
+
+        # Verify request was made with correct parameters
+        mock_get.assert_called_once_with(
+            'http://certtransparency:8400/certificates',
+            params={
+                'type': 'computer',
+                'include_revoked': 'true',
+                'limit': 10000,
+                'revoked_only': 'true'  # This tests the elif branch
+            },
+            timeout=30
+        )
+
+        assert result == {'certificates': []}
+
+    @patch("app.utils.certtransparency_client.requests.get")
+    def test_list_computer_certificates_active_only_branch(self, mock_get, app):
+        """Test list_computer_certificates with active_only=True (line 519)."""
+        # Mock successful response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"certificates": []}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        with app.app_context():
+            # Create client instance and call with active_only=True to hit line 519
+            client = CertTransparencyClient()
+            result = client.list_computer_certificates(
+                active_only=True,  # This should hit line 519
+                revoked_only=False
+            )
+
+        # Verify request was made with correct parameters
+        mock_get.assert_called_once_with(
+            "http://certtransparency:8400/certificates",
+            params={
+                "type": "computer",
+                "include_revoked": "true",
+                "limit": 10000,
+                "active_only": "true"  # This tests line 519
+            },
+            timeout=30
+        )
+
+        assert result == {"certificates": []}

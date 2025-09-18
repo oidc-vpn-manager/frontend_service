@@ -132,12 +132,16 @@ class DevelopmentConfig(Config):
         # 2. If DEV_DATABASE_URI is set (development/smoke tests), use it  
         # 3. If DATABASE_URL is set, use it
         # 4. Otherwise, inherit the base Config class logic
-        if os.environ.get('TESTING') == 'True':
-            self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:' # pragma: no coverage
-        else:
+        if os.environ.get('TESTING') == 'True': # pragma: no cover
+            ## PRAGMA-NO-COVER Exception; JS 2025-09-18 Actually only needed for test suite
+            
+            self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+        else: # pragma: no cover
+            ## PRAGMA-NO-COVER Exception; JS 2025-09-18 Actually only needed for test suite
+
             DEV_DATABASE_URI = os.environ.get('DEV_DATABASE_URI', '')
             if DEV_DATABASE_URI:
-                self.SQLALCHEMY_DATABASE_URI = DEV_DATABASE_URI # pragma: no coverage
+                self.SQLALCHEMY_DATABASE_URI = DEV_DATABASE_URI
             elif not os.environ.get('DATABASE_TYPE') and not os.environ.get('DATABASE_URL'):
                 # No database config found, use in-memory SQLite for testing
                 self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'

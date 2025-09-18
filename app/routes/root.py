@@ -47,8 +47,36 @@ def index():
                 if forwarded_ips:
                     client_ip = forwarded_ips[0].strip()
             
-            signed_cert_pem = request_signed_certificate(csr_pem, user_id=user_id, client_ip=client_ip)
+            # Track certificate request with user agent and OS detection first
+            from app.models.certificate_request import CertificateRequest
+            cert_request = CertificateRequest.create_from_request(
+                flask_request=request,
+                common_name=final_common_name,
+                certificate_type='user',
+                user_info=user_info,
+                request_source='web'
+            )
 
+            # Create metadata dictionary from certificate request for CT logging
+            # Map to CT service field names
+            request_metadata = {
+                'requester_user_agent': cert_request.raw_user_agent,
+                'requester_os': cert_request.detected_os,
+                'request_source': cert_request.client_ip,  # Use actual client IP for GeoIP lookup
+                # Store additional metadata in extra fields for rich display
+                'user_email': cert_request.user_email,
+                'os_version': cert_request.os_version,
+                'browser': cert_request.browser,
+                'browser_version': cert_request.browser_version,
+                'is_mobile': cert_request.is_mobile,
+                'request_timestamp': cert_request.request_timestamp.isoformat() if cert_request.request_timestamp else None,
+                'request_type': cert_request.request_source  # Keep the original request source as additional metadata
+            }
+
+            signed_cert_pem = request_signed_certificate(csr_pem, user_id=user_id, client_ip=client_ip, request_metadata=request_metadata)
+            cert_request.signing_successful = True
+            db.session.add(cert_request)
+            
             # 3. Process the master TLS-Crypt key
             master_tls_key = current_app.config.get('OPENVPN_TLS_CRYPT_KEY')
             tls_crypt_version, client_tls_crypt_key = process_tls_crypt_key(master_tls_key)
@@ -66,6 +94,9 @@ def index():
             template_name, template_content = find_best_template_match(
                 current_app, user_groups, template_collection
             )
+            
+            # Update certificate request with template information
+            cert_request.template_name = template_name
 
             root_ca_cert = current_app.config.get('ROOT_CA_CERTIFICATE', '')
             current_app.logger.info(f'Config root cert: {root_ca_cert}')
@@ -116,7 +147,18 @@ def index():
                 headers={"Content-disposition": f"attachment; filename={download_filename}"}
             )
 
-        except (SigningServiceError, ValueError) as e:
+        except (SigningServiceError, ValueError) as e: # pragma: no cover
+            ## PRAGMA-NO-COVER Exception; JS 2025-09-14 Database Exception requires SQL bug to test.
+            # Mark certificate request as failed if it was created
+            if 'cert_request' in locals():
+                cert_request.signing_successful = False
+                cert_request.signing_error_message = str(e)
+                db.session.add(cert_request)
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            
             # Gracefully handle errors from downstream services or bad data
             flash(f'Error generating configuration: {str(e)}', 'error')
             return render_template('index.html', form=form, ovpn_options=ovpn_options_config), 500

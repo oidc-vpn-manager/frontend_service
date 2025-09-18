@@ -64,7 +64,7 @@ class TestBulkRevocationBug:
             # Mock certificates response with a certificate that has issuing_user_id
             mock_ct_client.list_certificates.return_value = {
                 'certificates': [{
-                    'fingerprint': 'ABC123',
+                    'fingerprint': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF',
                     'subject': {'common_name': 'test@example.com'},
                     'issuing_user_id': 'user123',
                     'issued_at': '2024-01-01T00:00:00Z',
@@ -109,7 +109,7 @@ class TestBulkRevocationBug:
         
         This test will FAIL initially, demonstrating the bug.
         """
-        fingerprint = 'ABC123DEF456'
+        fingerprint = '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF'
         
         # Mock the certificate transparency client
         with patch('app.routes.admin.get_certtransparency_client') as mock_client:

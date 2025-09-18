@@ -5,6 +5,7 @@ Defines reusable decorators for authentication and authorization.
 from functools import wraps
 from flask import request, abort, current_app, session, redirect, url_for, jsonify
 from app.utils.tracing import trace
+from app.utils.security_logging import security_logger
 from app.models.presharedkey import PreSharedKey
 
 
@@ -19,6 +20,11 @@ def psk_required(f):
         # 1. Check for Authorization header
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
+            security_logger.log_api_authentication_failure(
+                endpoint=request.path,
+                auth_method="psk",
+                failure_reason="Missing or invalid Authorization header"
+            )
             return jsonify(error="Authorization header is missing or invalid."), 401
         
         # 2. Extract the key
@@ -32,6 +38,11 @@ def psk_required(f):
                 break
         
         if not psk_object:
+            security_logger.log_api_authentication_failure(
+                endpoint=request.path,
+                auth_method="psk",
+                failure_reason="Invalid or expired PSK"
+            )
             return jsonify(error="Unauthorized: Invalid or expired key."), 401
         
         # Pass the validated psk_object to the route if needed
@@ -41,16 +52,19 @@ def psk_required(f):
 
 def login_required(f):
     """
-    Decorator to ensure a user is logged in.
+    Decorator to ensure a user is logged in with valid session data.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         trace(current_app, 'utils.decorators.login_required.decorated_function')
-        # Ensure user is logged in
-        if 'user' not in session or not session.get('user'):
+        # Ensure user is logged in with proper session structure
+        user = session.get('user')
+        if (not user or
+            not isinstance(user, dict) or
+            not user.get('sub')):
             session['next_url'] = request.path
             return redirect(url_for('auth.login'))
-        
+
         return f(*args, **kwargs)
 
     return decorated_function
@@ -62,15 +76,17 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         trace(current_app, 'utils.decorators.admin_required.decorated_function')
-        # First, ensure user is logged in
-        if 'user' not in session or not session.get('user'):
+        # First, ensure user is logged in with proper session structure
+        user = session.get('user')
+        if (not user or
+            not isinstance(user, dict) or
+            not user.get('sub')):
             # Store the intended destination URL for post-auth redirect
             session['next_url'] = request.url
             current_app.logger.info(f"Storing destination URL for admin-required post-auth redirect: {request.url}")
             return redirect(url_for('auth.login'))
 
         # Check for admin group membership
-        user = session.get('user', {})
         user_groups = user.get('groups', [])
         admin_group = current_app.config.get('OIDC_ADMIN_GROUP')
 
@@ -247,5 +263,64 @@ def redirect_user_to_user_service(f):
         # Redirect to user service (login_required decorator already validated authentication)
         target_url = f"{user_url_base.rstrip('/')}{request.path}{'?' + request.query_string.decode() if request.query_string else ''}"
         return redirect(url_for('root.bounce_to_user', target_url=target_url))
-    
+
+    return decorated_function
+
+
+def service_admin_required(f):
+    """
+    Decorator to ensure a user has service administrator privileges.
+    This allows access to certificate management and bulk operations.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        trace(current_app, 'utils.decorators.service_admin_required.decorated_function')
+        # First, ensure user is logged in
+        if 'user' not in session or not session.get('user'):
+            # Store the intended destination URL for post-auth redirect
+            session['next_url'] = request.url
+            current_app.logger.info(f"Storing destination URL for service-admin-required post-auth redirect: {request.url}")
+            return redirect(url_for('auth.login'))
+
+        # Check for service admin or admin role
+        user = session.get('user', {})
+        is_system_admin = user.get('is_system_admin', False)
+        is_admin = user.get('is_admin', False)
+
+        if not (is_system_admin or is_admin):
+            current_app.logger.warning(f"Unauthorized access attempt by user {user.get('sub', 'unknown')} for {request.url}")
+            abort(403)
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def service_admin_or_auditor_required(f):
+    """
+    Decorator to ensure a user has service administrator or auditor privileges.
+    This allows access to certificate listing and querying operations.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        trace(current_app, 'utils.decorators.service_admin_or_auditor_required.decorated_function')
+        # First, ensure user is logged in
+        if 'user' not in session or not session.get('user'):
+            # Store the intended destination URL for post-auth redirect
+            session['next_url'] = request.url
+            current_app.logger.info(f"Storing destination URL for service-admin-or-auditor-required post-auth redirect: {request.url}")
+            return redirect(url_for('auth.login'))
+
+        # Check for auditor, service admin, or admin role
+        user = session.get('user', {})
+        is_auditor = user.get('is_auditor', False)
+        is_system_admin = user.get('is_system_admin', False)
+        is_admin = user.get('is_admin', False)
+
+        if not (is_auditor or is_system_admin or is_admin):
+            current_app.logger.warning(f"Unauthorized access attempt by user {user.get('sub', 'unknown')} for {request.url}")
+            abort(403)
+
+        return f(*args, **kwargs)
+
     return decorated_function

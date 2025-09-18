@@ -97,9 +97,66 @@
                 </div>
                 {% endif %}
             </div>
-            
+
         </div>
-        
+
+        <!-- Request Metadata Section -->
+        {% if certificate.requester_info %}
+        <div style="background: white; padding: 15px; border-radius: 5px; border: 1px solid #e9ecef; margin-top: 20px;">
+            <h3 style="margin-top: 0; color: #495057; border-bottom: 2px solid #e9ecef; padding-bottom: 10px;">Request Information</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+                {% if certificate.requester_info.ip %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Request IP:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                        {{ certificate.requester_info.ip }}
+                        {% if certificate.requester_info.country %}
+                            <span style="margin-left: 10px; color: #6c757d;">({{ certificate.requester_info.country }})</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.user_email %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Email:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.requester_info.user_email }}</td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.os %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Device OS:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                        {{ certificate.requester_info.os }}
+                        {% if certificate.requester_info.os_version %}
+                            {{ certificate.requester_info.os_version }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.browser %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Browser:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">
+                        {{ certificate.requester_info.browser }}
+                        {% if certificate.requester_info.browser_version %}
+                            {{ certificate.requester_info.browser_version }}
+                        {% endif %}
+                        {% if certificate.requester_info.is_mobile %}
+                            <span style="margin-left: 10px; color: #6c757d;">(Mobile)</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% if certificate.requester_info.request_timestamp %}
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; border-bottom: 1px solid #ddd;">Requested:</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #ddd;">{{ certificate.requester_info.request_timestamp[:19] }} UTC</td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+        {% endif %}
+
         <!-- Action Buttons -->
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
             {% if not (certificate.revocation or certificate.revoked_at) %}

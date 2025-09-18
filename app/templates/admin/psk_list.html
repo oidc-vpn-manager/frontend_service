@@ -13,6 +13,7 @@
             <tr>
                 <th>Description</th>
                 <th>Key ID</th>
+                <th>Type</th>
                 <th>Template Set</th>
                 <th>Status</th>
                 <th>Usage</th>
@@ -28,6 +29,11 @@
                     <td>{{ key.description }}</td>
                     <td>
                         <span class="key-id-display">{{ key.key_truncated or '****-****-****-****' }}</span>
+                    </td>
+                    <td>
+                        <span class="psk-type-badge psk-type-{{ key.psk_type or 'server' }}">
+                            {{ (key.psk_type or 'server').title() }}
+                        </span>
                     </td>
                     <td><span class="template-set-badge">{{ key.template_set or 'Default' }}</span></td>
                     <td>
@@ -58,7 +64,7 @@
                 </tr>
             {% else %}
                 <tr>
-                    <td colspan="9">No Pre-Shared Keys have been created yet.</td>
+                    <td colspan="10">No Pre-Shared Keys have been created yet.</td>
                 </tr>
             {% endfor %}
         </tbody>
@@ -76,6 +82,23 @@
             border-radius: 4px;
             font-size: 0.875em;
             font-weight: 500;
+        }
+
+        .psk-type-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.875em;
+            font-weight: 500;
+        }
+
+        .psk-type-server {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .psk-type-computer {
+            background: #d1ecf1;
+            color: #0c5460;
         }
         
         .key-id-display {

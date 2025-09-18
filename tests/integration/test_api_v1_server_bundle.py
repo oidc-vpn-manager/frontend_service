@@ -216,14 +216,18 @@ class TestServerBundleAPI:
                                      headers={'Authorization': f'Bearer f47ac10b-58cc-4372-a567-0e02b2c3d479'},
                                      json={'description': 'test-server'})
 
-                # Should succeed with empty TLS-Crypt key
+                # Should succeed without TLS-Crypt key
                 assert response.status_code == 200
-                
-                # Verify tar file contents
+
+                # Verify tar file contents - TLS-Crypt key should not be included
                 tar_buffer = io.BytesIO(response.data)
                 with tarfile.open(fileobj=tar_buffer, mode='r:gz') as tar:
-                    tls_crypt_content = tar.extractfile('tls-crypt.key').read().decode('utf-8')
-                    assert tls_crypt_content == ''  # Should be empty
+                    file_names = tar.getnames()
+                    assert 'tls-crypt.key' not in file_names  # Should not be present when not configured
+                    # Should still have other expected files
+                    assert 'ca-chain.crt' in file_names
+                    assert 'server.crt' in file_names
+                    assert 'server.key' in file_names
 
     def test_server_bundle_missing_ca_certificates(self, client, app):
         """Test server bundle with missing CA certificates."""

@@ -8,7 +8,7 @@ def render_template(template, **kargs):
     roles = []
     if 'user' in session:
         user = session.get('user', {})
-        if user != {}:
+        if user and user != {} and isinstance(user, dict):
             roles.append('user')
             if user.get('is_auditor', False):
                 roles.append('auditor')

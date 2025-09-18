@@ -57,7 +57,7 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'invalid_reason'}
             )
             
@@ -81,7 +81,7 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'admin_revocation'}
             )
             
@@ -103,7 +103,7 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'admin_revocation'}
             )
             
@@ -117,7 +117,7 @@ class TestAdminCoverage:
         mock_get_client.return_value = mock_client
         mock_client.get_certificate_by_fingerprint.return_value = {
             'certificate': {
-                'fingerprint_sha256': 'ABC123',
+                'fingerprint_sha256': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF',
                 'revoked_at': '2023-01-01T00:00:00Z'
             }
         }
@@ -130,7 +130,7 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'admin_revocation'}
             )
             
@@ -144,7 +144,7 @@ class TestAdminCoverage:
         mock_get_client.return_value = mock_client
         mock_client.get_certificate_by_fingerprint.return_value = {
             'certificate': {
-                'fingerprint_sha256': 'ABC123',
+                'fingerprint_sha256': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF',
                 'revocation': {'reason': 'key_compromise'}
             }
         }
@@ -157,7 +157,7 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'admin_revocation'}
             )
             
@@ -253,7 +253,7 @@ class TestAdminCoverage:
         mock_get_client.return_value = mock_client
         mock_client.get_certificate_by_fingerprint.return_value = {
             'certificate': {
-                'fingerprint_sha256': 'ABC123',
+                'fingerprint_sha256': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF',
                 'issuing_user_id': 'user123'
             }
         }
@@ -267,7 +267,7 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'admin_revocation'}
             )
             
@@ -281,7 +281,7 @@ class TestAdminCoverage:
         mock_get_client.return_value = mock_client
         mock_client.get_certificate_by_fingerprint.return_value = {
             'certificate': {
-                'fingerprint_sha256': 'ABC123',
+                'fingerprint_sha256': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF',
                 'issuing_user_id': 'user123'
             }
         }
@@ -295,7 +295,7 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'admin_revocation'}
             )
             
@@ -323,12 +323,12 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'key_compromise'}
             )
             
             assert response.status_code == 302  # Redirect after error
-            assert '/admin/certificates/ABC123' in response.location
+            assert '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF' in response.location
 
     @patch('app.routes.admin.request_certificate_revocation')
     @patch('app.routes.admin.get_certtransparency_client')
@@ -351,12 +351,12 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'key_compromise'}
             )
             
             assert response.status_code == 302  # Redirect after error
-            assert '/admin/certificates/ABC123' in response.location
+            assert '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF' in response.location
 
     @patch('app.routes.admin.get_certtransparency_client')
     def test_admin_revoke_certificate_general_exception(self, mock_get_ct_client, app):
@@ -374,12 +374,12 @@ class TestAdminCoverage:
                 }
             
             response = client.post(
-                '/admin/certificates/ABC123/revoke',
+                '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'key_compromise'}
             )
             
             assert response.status_code == 302  # Redirect after error
-            assert '/admin/certificates/ABC123' in response.location
+            assert '/admin/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF' in response.location
 
     @patch('app.routes.admin.request_bulk_certificate_revocation')
     def test_bulk_revocation_signing_unavailable_error(self, mock_bulk_revoke, app):

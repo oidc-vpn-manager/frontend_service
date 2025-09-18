@@ -26,7 +26,7 @@ def load_routes(app: Flask):
     
     @app.errorhandler(500)
     def internal_server_error(e):
-        return render_template('status/500.html'), 500 # pragma: no coverage
+        return render_template('status/500.html'), 500
 
     from .root import bp as root_bp
     app.register_blueprint(root_bp)
@@ -45,6 +45,9 @@ def load_routes(app: Flask):
 
     from .api import bp as api_bp
     app.register_blueprint(api_bp)
+
+    from .api.service_admin import bp as service_admin_bp
+    app.register_blueprint(service_admin_bp, url_prefix='/api')
 
     from .profile import bp as profile_bp
     app.register_blueprint(profile_bp)

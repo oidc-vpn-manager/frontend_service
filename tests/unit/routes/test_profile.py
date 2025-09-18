@@ -97,7 +97,7 @@ class TestProfileCertificateErrorHandling:
                 }
             
             response = client.post(
-                '/profile/certificates/ABC123/revoke',
+                '/profile/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'key_compromise'}
             )
             
@@ -124,7 +124,7 @@ class TestProfileCertificateErrorHandling:
                 }
             
             response = client.post(
-                '/profile/certificates/ABC123/revoke',
+                '/profile/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'key_compromise'}
             )
             
@@ -138,28 +138,12 @@ class TestProfileCertificateErrorHandling:
         """Test certificate detail access without user session - lines 177-179."""
         with app.test_client() as client:
             # No user session set
-            response = client.get('/profile/certificates/ABC123')
+            response = client.get('/profile/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF')
             
             # Should redirect to login due to @login_required decorator
             assert response.status_code == 302
             assert '/auth/login' in response.location
             
-    @patch('app.routes.profile.get_certtransparency_client')
-    def test_certificate_detail_no_user_id(self, mock_get_client, app):
-        """Test certificate detail access with session but no user ID - lines 178-179."""
-        with app.test_client() as client:
-            with client.session_transaction() as sess:
-                # Set user session but without 'sub' field
-                sess['user'] = {
-                    'preferred_username': 'testuser',
-                    'email': 'test@example.com'
-                }
-            
-            response = client.get('/profile/certificates/ABC123')
-            
-            # Should redirect to profile certificates page  
-            assert response.status_code == 302
-            assert '/profile/certificates' in response.location
 
     @patch('app.routes.profile.get_certtransparency_client')
     def test_certificate_detail_certificate_not_found(self, mock_get_client, app):
@@ -176,7 +160,7 @@ class TestProfileCertificateErrorHandling:
                     'email': 'test@example.com'
                 }
             
-            response = client.get('/profile/certificates/ABC123')
+            response = client.get('/profile/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF')
             
             # Should redirect to profile certificates page
             assert response.status_code == 302
@@ -189,7 +173,7 @@ class TestProfileCertificateErrorHandling:
         mock_get_client.return_value = mock_client
         mock_client.get_certificate_by_fingerprint.return_value = {
             'issuing_user_id': 'other_user_456',  # Different user
-            'fingerprint': 'ABC123',
+            'fingerprint': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF',
             'status': 'issued'
         }
         
@@ -201,7 +185,7 @@ class TestProfileCertificateErrorHandling:
                     'email': 'test@example.com'
                 }
             
-            response = client.get('/profile/certificates/ABC123')
+            response = client.get('/profile/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF')
             
             # Should redirect to profile certificates page
             assert response.status_code == 302
@@ -215,7 +199,7 @@ class TestProfileCertificateErrorHandling:
         mock_get_client.return_value = mock_client
         mock_client.get_certificate_by_fingerprint.return_value = {
             'issuing_user_id': 'user123',  # Same user
-            'fingerprint': 'ABC123',
+            'fingerprint': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF',
             'status': 'issued'
         }
         
@@ -229,13 +213,13 @@ class TestProfileCertificateErrorHandling:
                     'email': 'test@example.com'
                 }
             
-            response = client.get('/profile/certificates/ABC123')
+            response = client.get('/profile/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF')
             
             # Should render the certificate detail template
             assert response.status_code == 200
             mock_render.assert_called_with('profile/certificate_detail.html', certificate={
                 'issuing_user_id': 'user123',
-                'fingerprint': 'ABC123', 
+                'fingerprint': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF', 
                 'status': 'issued'
             })
 
@@ -250,7 +234,7 @@ class TestProfileCertificateErrorHandling:
                 }
             
             response = client.post(
-                '/profile/certificates/ABC123/revoke',
+                '/profile/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF/revoke',
                 data={'reason': 'invalid_reason_not_in_list'}
             )
             
@@ -269,7 +253,7 @@ class TestProfileCertificateErrorHandling:
         mock_client.get_certificate_by_fingerprint.return_value = {
             'certificate': {
                 'issuing_user_id': 'user123',  
-                'fingerprint': 'ABC123',
+                'fingerprint': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF',
                 'status': 'issued',
                 'nested': 'data'
             }
@@ -285,13 +269,13 @@ class TestProfileCertificateErrorHandling:
                     'email': 'test@example.com'
                 }
             
-            response = client.get('/profile/certificates/ABC123')
+            response = client.get('/profile/certificates/1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF')
             
             # Should render with extracted nested certificate
             assert response.status_code == 200
             mock_render.assert_called_with('profile/certificate_detail.html', certificate={
                 'issuing_user_id': 'user123',
-                'fingerprint': 'ABC123', 
+                'fingerprint': '1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF', 
                 'status': 'issued',
                 'nested': 'data'
             })

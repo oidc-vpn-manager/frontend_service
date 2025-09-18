@@ -172,3 +172,55 @@ class TestDevelopmentCommands:
                 
                 assert result.exit_code == 0
                 assert 'Groups: []' in result.output
+
+    def test_create_psk_with_type_parameter(self, app):
+        """Test PSK creation with different PSK types."""
+        with app.app_context():
+            # Mock development mode
+            with patch.object(app.config, 'get') as mock_config:
+                mock_config.side_effect = lambda key, default=None: 'development' if key == 'ENVIRONMENT' else default
+
+                runner = CliRunner()
+
+                # Test server PSK creation (explicit)
+                result = runner.invoke(create_psk_command, [
+                    '--description', 'test-server-with-type',
+                    '--psk-type', 'server'
+                ])
+
+                assert result.exit_code == 0
+                assert 'DEVELOPMENT MODE PSK CREATED' in result.output
+                assert 'PSK Type: server' in result.output
+
+                # Verify server PSK was created in database
+                psk = PreSharedKey.query.filter_by(description='test-server-with-type').first()
+                assert psk is not None
+                assert psk.psk_type == 'server'
+
+                # Test computer PSK creation
+                result = runner.invoke(create_psk_command, [
+                    '--description', 'test-computer-with-type',
+                    '--psk-type', 'computer'
+                ])
+
+                assert result.exit_code == 0
+                assert 'DEVELOPMENT MODE PSK CREATED' in result.output
+                assert 'PSK Type: computer' in result.output
+
+                # Verify computer PSK was created in database
+                psk = PreSharedKey.query.filter_by(description='test-computer-with-type').first()
+                assert psk is not None
+                assert psk.psk_type == 'computer'
+
+                # Test default PSK type (should be server)
+                result = runner.invoke(create_psk_command, [
+                    '--description', 'test-default-type'
+                ])
+
+                assert result.exit_code == 0
+                assert 'PSK Type: server' in result.output
+
+                # Verify default PSK was created as server type
+                psk = PreSharedKey.query.filter_by(description='test-default-type').first()
+                assert psk is not None
+                assert psk.psk_type == 'server'

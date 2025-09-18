@@ -10,7 +10,7 @@ class SigningServiceError(Exception):
     """Custom exception for errors from the signing service."""
     pass
 
-def request_signed_certificate(csr_pem: str, user_id: str = None, certificate_type: str = 'client', client_ip: str = None) -> str:
+def request_signed_certificate(csr_pem: str, user_id: str = None, certificate_type: str = 'client', client_ip: str = None, request_metadata: dict = None) -> str:
     """
     Requests a signed certificate from the signing service.
 
@@ -19,6 +19,8 @@ def request_signed_certificate(csr_pem: str, user_id: str = None, certificate_ty
         user_id: Optional user ID to track who requested the certificate.
         certificate_type: Type of certificate ('client' or 'server'). Defaults to 'client'.
         client_ip: Optional client IP address for geolocation tracking.
+        request_metadata: Optional dictionary containing rich metadata about the request
+                         (user agent, OS, browser, template info, etc.).
 
     Returns:
         The PEM-encoded signed certificate string.
@@ -54,6 +56,10 @@ def request_signed_certificate(csr_pem: str, user_id: str = None, certificate_ty
     # Include client_ip in payload if provided and not empty
     if client_ip and client_ip.strip():
         payload['client_ip'] = client_ip
+
+    # Include request metadata in payload if provided
+    if request_metadata:
+        payload['request_metadata'] = request_metadata
 
     try:
         # 2. Make the request

@@ -151,6 +151,7 @@ class TestServerBundleUnit:
             # Setup PSK mock - simulate valid PSK for auth
             mock_psk = MagicMock()
             mock_psk.description = 'test-server'
+            mock_psk.psk_type = 'server'
             mock_psk.is_valid.return_value = True
             mock_psk.verify_key.return_value = True
             mock_psk_query.filter_by.return_value.all.return_value = [mock_psk]
@@ -264,11 +265,16 @@ class TestServerBundleUnit:
                                  headers={'Authorization': 'Bearer f47ac10b-58cc-4372-a567-0e02b2c3d479'},
                                  json={'description': 'test-server'})
 
-            # Extract and verify TLS-Crypt key is empty
+            # Extract and verify TLS-Crypt key is not included when not configured
             tar_buffer = io.BytesIO(response.data)
             with tarfile.open(fileobj=tar_buffer, mode='r:gz') as tar:
-                tls_key = tar.extractfile('tls-crypt.key').read().decode('utf-8')
-                assert tls_key == ''
+                # TLS-Crypt key should not be present when OPENVPN_TLS_CRYPT_KEY is None
+                file_names = tar.getnames()
+                assert 'tls-crypt.key' not in file_names
+                # Should still have other expected files
+                assert 'ca-chain.crt' in file_names
+                assert 'server.crt' in file_names
+                assert 'server.key' in file_names
 
     def test_server_bundle_no_server_templates_dir(self, client):
         """Test behavior when SERVER_TEMPLATES_DIR is not configured."""
@@ -370,6 +376,98 @@ class TestServerBundleUnit:
                 key_info = tar.getmember('server.key')
                 assert key_info.size == 26  # Length of 'server-private-key-content'
                 
-                # Check server.crt file size  
+                # Check server.crt file size
                 cert_info = tar.getmember('server.crt')
                 assert cert_info.size == 26  # Length of 'server-certificate-content'
+
+    def test_server_bundle_x_forwarded_for_whitespace_fallback(self, client):
+        """Test X-Forwarded-For header with whitespace falls back to remote_addr - covers lines 53-54."""
+        with patch('app.routes.api.v1.generate_key_and_csr') as mock_gen_key, \
+             patch('app.routes.api.v1.request_signed_certificate') as mock_sign_cert, \
+             patch('os.path.exists') as mock_exists:
+
+            # Setup mocks
+            mock_key = MagicMock()
+            mock_key.private_bytes.return_value = b'server-private-key'
+            mock_csr = MagicMock()
+            mock_csr.public_bytes.return_value = b'server-csr'
+            mock_gen_key.return_value = (mock_key, mock_csr)
+            mock_sign_cert.return_value = 'server-certificate'
+            mock_exists.return_value = False  # No server templates
+
+            # Test with X-Forwarded-For header containing only whitespace
+            # This tests the fixed logic: forwarded_ips[0].strip() is empty
+            response = client.post('/api/v1/server/bundle',
+                                 headers={
+                                     'Authorization': 'Bearer f47ac10b-58cc-4372-a567-0e02b2c3d479',
+                                     'X-Forwarded-For': '   ,  ,   '  # Only whitespace and commas
+                                 },
+                                 json={'description': 'test-server'})
+
+            assert response.status_code == 200
+
+            # Verify signing service was called - should use request.remote_addr as fallback
+            mock_sign_cert.assert_called_once()
+            call_kwargs = mock_sign_cert.call_args.kwargs
+            # Should fall back to request.remote_addr (test client uses '127.0.0.1')
+            assert call_kwargs['client_ip'] == '127.0.0.1'
+
+    def test_server_bundle_x_forwarded_for_single_ip(self, client):
+        """Test X-Forwarded-For header with single IP - covers line 54."""
+        with patch('app.routes.api.v1.generate_key_and_csr') as mock_gen_key, \
+             patch('app.routes.api.v1.request_signed_certificate') as mock_sign_cert, \
+             patch('os.path.exists') as mock_exists:
+
+            # Setup mocks
+            mock_key = MagicMock()
+            mock_key.private_bytes.return_value = b'server-private-key'
+            mock_csr = MagicMock()
+            mock_csr.public_bytes.return_value = b'server-csr'
+            mock_gen_key.return_value = (mock_key, mock_csr)
+            mock_sign_cert.return_value = 'server-certificate'
+            mock_exists.return_value = False
+
+            # Test with X-Forwarded-For header containing single IP
+            response = client.post('/api/v1/server/bundle',
+                                 headers={
+                                     'Authorization': 'Bearer f47ac10b-58cc-4372-a567-0e02b2c3d479',
+                                     'X-Forwarded-For': '203.0.113.100'  # Single IP
+                                 },
+                                 json={'description': 'test-server'})
+
+            assert response.status_code == 200
+
+            # Verify signing service was called with the single forwarded IP
+            mock_sign_cert.assert_called_once()
+            call_kwargs = mock_sign_cert.call_args.kwargs
+            assert call_kwargs['client_ip'] == '203.0.113.100'
+
+    def test_server_bundle_x_forwarded_for_multiple_ips(self, client):
+        """Test X-Forwarded-For header with multiple IPs - covers line 54."""
+        with patch('app.routes.api.v1.generate_key_and_csr') as mock_gen_key, \
+             patch('app.routes.api.v1.request_signed_certificate') as mock_sign_cert, \
+             patch('os.path.exists') as mock_exists:
+
+            # Setup mocks
+            mock_key = MagicMock()
+            mock_key.private_bytes.return_value = b'server-private-key'
+            mock_csr = MagicMock()
+            mock_csr.public_bytes.return_value = b'server-csr'
+            mock_gen_key.return_value = (mock_key, mock_csr)
+            mock_sign_cert.return_value = 'server-certificate'
+            mock_exists.return_value = False
+
+            # Test with X-Forwarded-For header containing multiple IPs (client, proxy1, proxy2)
+            response = client.post('/api/v1/server/bundle',
+                                 headers={
+                                     'Authorization': 'Bearer f47ac10b-58cc-4372-a567-0e02b2c3d479',
+                                     'X-Forwarded-For': '203.0.113.195, 70.41.3.18, 192.168.1.1'
+                                 },
+                                 json={'description': 'test-server'})
+
+            assert response.status_code == 200
+
+            # Verify signing service was called with the first IP (original client)
+            mock_sign_cert.assert_called_once()
+            call_kwargs = mock_sign_cert.call_args.kwargs
+            assert call_kwargs['client_ip'] == '203.0.113.195'  # First IP should be used

@@ -10,6 +10,7 @@ from app.utils.tracing import trace
 from app.utils.decorators import auditor_or_service_admin_required, redirect_admin_to_admin_service
 from app.utils import render_template
 from app.utils.certtransparency_client import get_certtransparency_client, CertTransparencyClientError
+from app.utils.validation import validate_certificate_fingerprint_or_404
 
 bp = Blueprint('certificates', __name__, url_prefix='/certificates')
 
@@ -26,22 +27,32 @@ def transparency_log():
     """
     trace(current_app, 'routes.certificates.transparency_log')
     try:
-        # Get query parameters for pagination and filtering
-        page = request.args.get('page', 1, type=int)
-        limit = min(request.args.get('limit', 50, type=int), 100)  # Cap at 100 for UI
+        # Get query parameters for pagination and filtering with robust validation
+        try:
+            page = max(1, request.args.get('page', 1, type=int))  # Ensure page >= 1
+        except (ValueError, TypeError): # pragma: no cover
+            ## PRAGMA-NO-COVER Exception; JS 2025-09-17 Value or Type errors for values being passed in are very hard to generate.
+            page = 1  # Default to page 1 if invalid
+
+        try:
+            limit = min(max(1, request.args.get('limit', 50, type=int)), 100)  # Cap between 1-100
+        except (ValueError, TypeError): # pragma: no cover
+            ## PRAGMA-NO-COVER Exception; JS 2025-09-17 Value or Type errors for values being passed in are very hard to generate.
+            limit = 50  # Default to 50 if invalid
         
-        # Filter parameters (reuse admin logic)
+        # Filter parameters (reuse admin logic, escape user inputs to prevent XSS)
+        from markupsafe import escape
         filters = {}
         if request.args.get('type'):
-            filters['type'] = request.args.get('type')
+            filters['type'] = escape(request.args.get('type'))
         if request.args.get('subject'):
-            filters['subject'] = request.args.get('subject')
+            filters['subject'] = escape(request.args.get('subject'))
         if request.args.get('issuer'):
-            filters['issuer'] = request.args.get('issuer')
+            filters['issuer'] = escape(request.args.get('issuer'))
         if request.args.get('from_date'):
-            filters['from_date'] = request.args.get('from_date')
+            filters['from_date'] = escape(request.args.get('from_date'))
         if request.args.get('to_date'):
-            filters['to_date'] = request.args.get('to_date')
+            filters['to_date'] = escape(request.args.get('to_date'))
         if request.args.get('include_revoked') == 'false':
             filters['include_revoked'] = 'false'
         
@@ -106,6 +117,10 @@ def certificate_detail(fingerprint):
         fingerprint: SHA-256 fingerprint of the certificate
     """
     trace(current_app, 'routes.certificates.certificate_detail')
+
+    # Validate fingerprint format
+    validate_certificate_fingerprint_or_404(fingerprint, current_app.logger)
+
     try:
         client = get_certtransparency_client()
         response = client.get_certificate_by_fingerprint(fingerprint, include_pem=True)

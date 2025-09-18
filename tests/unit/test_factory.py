@@ -7,6 +7,7 @@ from flask import Flask
 from unittest.mock import MagicMock
 
 from app import create_app
+from app.app import develop_app
 
 @pytest.fixture
 def mock_dependencies(monkeypatch):
@@ -54,6 +55,42 @@ def test_create_app_development(mock_dependencies):
     assert isinstance(app, Flask)
     assert app.config['DEBUG'] is True
     assert app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] is True
-    
+
+    mock_init_extensions.assert_called_once_with(app)
+    mock_load_routes.assert_called_once_with(app)
+
+
+def test_develop_app_uses_environment_config(mock_dependencies, monkeypatch):
+    """
+    Tests that develop_app respects FLASK_CONFIG environment variable.
+    """
+    # Arrange
+    mock_init_extensions, mock_load_routes = mock_dependencies
+    monkeypatch.setenv('FLASK_CONFIG', 'develop')
+
+    # Act
+    app = develop_app()
+
+    # Assert
+    assert isinstance(app, Flask)
+    assert app.config['DEBUG'] is True  # Development config should have DEBUG=True
+    mock_init_extensions.assert_called_once_with(app)
+    mock_load_routes.assert_called_once_with(app)
+
+
+def test_develop_app_defaults_to_development(mock_dependencies, monkeypatch):
+    """
+    Tests that develop_app defaults to development config when FLASK_CONFIG is not set.
+    """
+    # Arrange
+    mock_init_extensions, mock_load_routes = mock_dependencies
+    monkeypatch.delenv('FLASK_CONFIG', raising=False)  # Ensure it's not set
+
+    # Act
+    app = develop_app()
+
+    # Assert
+    assert isinstance(app, Flask)
+    assert app.config['DEBUG'] is True
     mock_init_extensions.assert_called_once_with(app)
     mock_load_routes.assert_called_once_with(app)

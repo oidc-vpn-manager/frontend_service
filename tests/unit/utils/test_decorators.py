@@ -171,7 +171,12 @@ class TestAdminRequiredDecorator:
         """Tests that a user in the admin group can access the route."""
         with app.test_client() as client:
             with client.session_transaction() as sess:
-                sess['user'] = {'groups': ['vpn-admins', 'users']}
+                sess['user'] = {
+                    'sub': 'admin@example.com',
+                    'groups': ['vpn-admins', 'users'],
+                    'name': 'Admin User',
+                    'email': 'admin@example.com'
+                }
             
             response = client.get('/admin-only')
         
@@ -182,7 +187,12 @@ class TestAdminRequiredDecorator:
         """Tests that a user not in the admin group gets a 403 error."""
         with app.test_client() as client:
             with client.session_transaction() as sess:
-                sess['user'] = {'groups': ['users']}
+                sess['user'] = {
+                    'sub': 'user@example.com',
+                    'groups': ['users'],
+                    'name': 'Regular User',
+                    'email': 'user@example.com'
+                }
             
             response = client.get('/admin-only')
         

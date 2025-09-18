@@ -99,7 +99,12 @@ class TestCSRFProtection:
         # Setup authentication
         with app.app_context():
             with client.session_transaction() as sess:
-                sess['user'] = {'groups': ['admins']}
+                sess['user'] = {
+                    'sub': 'admin-user@example.com',
+                    'groups': ['admins'],
+                    'name': 'Admin User',
+                    'email': 'admin-user@example.com'
+                }
         
         # Try to create PSK without CSRF token
         response = client.post('/admin/psk/new', data={
@@ -121,7 +126,12 @@ class TestCSRFProtection:
             
         with app.app_context():
             with client.session_transaction() as sess:
-                sess['user'] = {'groups': ['admins']}
+                sess['user'] = {
+                    'sub': 'admin-user@example.com',
+                    'groups': ['admins'],
+                    'name': 'Admin User',
+                    'email': 'admin-user@example.com'
+                }
         
         # Try with invalid CSRF token
         response = client.post('/admin/psk/new', data={
@@ -140,7 +150,11 @@ class TestSessionSecurity:
         """Test session cookies have proper security flags"""
         with app.app_context():
             with client.session_transaction() as sess:
-                sess['user'] = {'name': 'test'}
+                sess['user'] = {
+                    'sub': 'test-user@example.com',
+                    'name': 'Test User',
+                    'email': 'test-user@example.com'
+                }
         
         response = client.get('/')
         
@@ -163,7 +177,12 @@ class TestSessionSecurity:
         # For now, test that sessions are properly managed
         
         with client.session_transaction() as sess:
-            sess['user'] = {'groups': ['users']}
+            sess['user'] = {
+                'sub': 'user@example.com',
+                'groups': ['users'],
+                'name': 'Regular User',
+                'email': 'user@example.com'
+            }
             original_session = dict(sess)
         
         # Simulate privilege change (user becomes admin)
@@ -193,7 +212,12 @@ class TestAccessControlSecurity:
         # Test with non-admin user
         with app.app_context():
             with client.session_transaction() as sess:
-                sess['user'] = {'groups': ['users']}  # Not admin
+                sess['user'] = {
+                'sub': 'user@example.com',
+                'groups': ['users'],
+                'name': 'Regular User',
+                'email': 'user@example.com'
+            }  # Not admin
         
         for endpoint in admin_endpoints:
             response = client.get(endpoint)
@@ -245,7 +269,12 @@ class TestAccessControlSecurity:
         # In a multi-tenant scenario, user1 shouldn't see user2's PSKs
         # For now, test that the admin interface shows all PSKs (expected behavior)
         with client.session_transaction() as sess:
-            sess['user'] = {'groups': [admin_group]}
+            sess['user'] = {
+                'sub': 'admin@example.com',
+                'groups': [admin_group],
+                'name': 'Admin User',
+                'email': 'admin@example.com'
+            }
         
         response = client.get('/admin/psk')
         assert response.status_code == 200
@@ -268,7 +297,12 @@ class TestInputValidationWeb:
         
         # Setup admin session
         with client.session_transaction() as sess:
-            sess['user'] = {'groups': ['admins']}
+            sess['user'] = {
+                'sub': 'admin@example.com',
+                'groups': ['admins'],
+                'name': 'Admin User',
+                'email': 'admin@example.com'
+            }
         
         response = client.get('/admin/psk')
         response_text = response.get_data(as_text=True)
@@ -299,7 +333,12 @@ class TestInputValidationWeb:
         
         admin_group = app.config.get('OIDC_ADMIN_GROUP', 'admins')
         with client.session_transaction() as sess:
-            sess['user'] = {'groups': [admin_group]}
+            sess['user'] = {
+                'sub': 'admin@example.com',
+                'groups': [admin_group],
+                'name': 'Admin User',
+                'email': 'admin@example.com'
+            }
         
         # Get the admin page  
         response = client.get('/admin/psk')

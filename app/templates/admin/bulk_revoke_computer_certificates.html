@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% set active_page = 'admin' %}
+
+{% block title %}Bulk Revoke Computer Certificates - {{ config.SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 col-lg-6">
+        <h2>Bulk Revoke Computer Certificates</h2>
+        <p class="text-muted">Revoke all active computer certificates matching PSK criteria.</p>
+
+        <div class="alert alert-warning">
+            <strong>⚠️ Warning:</strong> This will revoke <strong>ALL</strong> computer certificates matching the PSK filter. This action cannot be undone.
+        </div>
+
+        <form method="post" class="needs-validation" novalidate>
+            <div class="mb-3">
+                <label for="psk_filter" class="form-label">PSK Filter <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="psk_filter" name="psk_filter"
+                       placeholder="Enter PSK description or fragment" required>
+                <div class="form-text">Enter PSK description or fragment to match computer certificates</div>
+                <div class="invalid-feedback">
+                    PSK filter is required
+                </div>
+            </div>
+
+            {% if computer_psks %}
+            <div class="mb-3">
+                <label class="form-label">Available Computer PSKs</label>
+                <div class="border p-2 bg-light" style="max-height: 200px; overflow-y: auto;">
+                    {% for psk in computer_psks %}
+                    <div class="d-flex justify-content-between align-items-center py-1">
+                        <code class="text-primary">{{ psk.description }}</code>
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                onclick="document.getElementById('psk_filter').value='{{ psk.description }}'">
+                            Use This
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="form-text">Click "Use This" to populate the PSK filter field</div>
+            </div>
+            {% endif %}
+
+            <div class="mb-3">
+                <label for="reason" class="form-label">Revocation Reason <span class="text-danger">*</span></label>
+                <select class="form-select" id="reason" name="reason" required>
+                    <option value="">Select revocation reason</option>
+                    <option value="key_compromise">Key Compromise</option>
+                    <option value="ca_compromise">CA Compromise</option>
+                    <option value="affiliation_changed">Affiliation Changed</option>
+                    <option value="superseded">Superseded</option>
+                    <option value="cessation_of_operation">Cessation of Operation</option>
+                    <option value="certificate_hold">Certificate Hold</option>
+                    <option value="privilege_withdrawn">Privilege Withdrawn</option>
+                    <option value="aa_compromise">AA Compromise</option>
+                    <option value="admin_bulk_revocation">Administrative Bulk Revocation</option>
+                </select>
+                <div class="invalid-feedback">
+                    Revocation reason is required
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="comment" class="form-label">Comment (Optional)</label>
+                <textarea class="form-control" id="comment" name="comment" rows="3"
+                          placeholder="Optional comment explaining the revocation"></textarea>
+                <div class="form-text">This comment will be logged for audit purposes</div>
+            </div>
+
+            <div class="mb-3">
+                <button type="submit" class="btn btn-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Revoke Computer Certificates
+                </button>
+                <a href="{{ url_for('admin.list_certificates') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Bootstrap form validation
+(function() {
+    'use strict';
+    window.addEventListener('load', function() {
+        var forms = document.getElementsByClassName('needs-validation');
+        var validation = Array.prototype.filter.call(forms, function(form) {
+            form.addEventListener('submit', function(event) {
+                if (form.checkValidity() === false) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    }, false);
+})();
+</script>
+{% endblock %}

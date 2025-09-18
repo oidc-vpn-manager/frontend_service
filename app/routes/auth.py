@@ -4,6 +4,7 @@ Handles OIDC authentication flows (login, callback, logout).
 
 from flask import Blueprint, redirect, url_for, session, current_app, request
 from app.utils.tracing import trace
+from app.utils.security_logging import security_logger
 from urllib.parse import urlencode
 from app.extensions import oauth
 
@@ -58,65 +59,87 @@ def callback():
     It exchanges the authorization code for a token and stores user info in the session.
     """
     trace(current_app, 'routes.auth.callback')
-    token = oauth.oidc.authorize_access_token()
-    # Get userinfo from the userinfo endpoint (this includes groups)
-    userinfo = oauth.oidc.userinfo(token=token)
-    session['user'] = userinfo
-    
-    # Assign role flags based on OIDC group memberships
-    user_groups = userinfo.get('groups', [])
-    if isinstance(user_groups, str):
-        # Handle both comma-separated strings and single group strings
-        if ',' in user_groups:
-            user_groups = [group.strip() for group in user_groups.split(',')]
-        else:
-            user_groups = [user_groups]
-    
-    session['user']['is_admin'] = current_app.config['OIDC_ADMIN_GROUP'] in user_groups
-    session['user']['is_auditor'] = current_app.config['OIDC_AUDITOR_GROUP'] in user_groups
-    session['user']['is_system_admin'] = current_app.config['OIDC_SYSTEM_ADMIN_GROUP'] in user_groups
-    
-    # Store the ID token for the logout flow
-    session['id_token_jwt'] = token.get('id_token')
-    current_app.logger.info(f"Login from {session['user']}")
-    
-    # Check if this is a CLI workflow
-    cli_port = session.get('cli_port')
-    if cli_port:
-        # CLI workflow - generate download token and redirect to localhost
-        from app.models import DownloadToken
-        from app.extensions import db
-        import uuid
-        
-        # Create download token
-        download_token = DownloadToken(
-            token=str(uuid.uuid4()),
-            user=session['user']['sub'],
-            cn=session['user'].get('email', session['user']['sub']),
-            requester_ip=request.remote_addr,
-            user_agent_string=request.user_agent.string,
-            detected_os=request.user_agent.platform,
-            optionset_used=session.get('cli_optionset', '')
+
+    try:
+        token = oauth.oidc.authorize_access_token()
+        # Get userinfo from the userinfo endpoint (this includes groups)
+        userinfo = oauth.oidc.userinfo(token=token)
+        session['user'] = userinfo
+
+        # Assign role flags based on OIDC group memberships
+        user_groups = userinfo.get('groups', [])
+        if isinstance(user_groups, str):
+            # Handle both comma-separated strings and single group strings
+            if ',' in user_groups:
+                user_groups = [group.strip() for group in user_groups.split(',')]
+            else:
+                user_groups = [user_groups]
+
+        session['user']['is_admin'] = current_app.config['OIDC_ADMIN_GROUP'] in user_groups
+        session['user']['is_auditor'] = current_app.config['OIDC_AUDITOR_GROUP'] in user_groups
+        session['user']['is_system_admin'] = current_app.config['OIDC_SYSTEM_ADMIN_GROUP'] in user_groups
+
+        # Store the ID token for the logout flow
+        session['id_token_jwt'] = token.get('id_token')
+        current_app.logger.info(f"Login from {session['user']}")
+
+        # Log successful authentication
+        user_id = userinfo.get('sub', '')
+        security_logger.log_authentication_attempt(
+            user_id=user_id,
+            success=True,
+            method="oidc"
         )
-        db.session.add(download_token)
-        db.session.commit()
-        
-        # Clean up CLI session data
-        cli_optionset = session.pop('cli_optionset', '')
-        session.pop('cli_port', None)
-        
-        # Redirect to CLI callback
-        callback_url = f"http://localhost:{cli_port}?token={download_token.token}"
-        current_app.logger.info(f"CLI workflow: redirecting to {callback_url}")
-        return redirect(callback_url)
+
+        # Check if this is a CLI workflow
+        cli_port = session.get('cli_port')
+        if cli_port:
+            # CLI workflow - generate download token and redirect to localhost
+            from app.models import DownloadToken
+            from app.extensions import db
+            import uuid
+
+            # Create download token
+            download_token = DownloadToken(
+                token=str(uuid.uuid4()),
+                user=session['user']['sub'],
+                cn=session['user'].get('email', session['user']['sub']),
+                requester_ip=request.remote_addr,
+                user_agent_string=request.user_agent.string,
+                detected_os=request.user_agent.platform,
+                optionset_used=session.get('cli_optionset', '')
+            )
+            db.session.add(download_token)
+            db.session.commit()
+
+            # Clean up CLI session data
+            cli_optionset = session.pop('cli_optionset', '')
+            session.pop('cli_port', None)
+
+            # Redirect to CLI callback
+            callback_url = f"http://localhost:{cli_port}?token={download_token.token}"
+            current_app.logger.info(f"CLI workflow: redirecting to {callback_url}")
+            return redirect(callback_url)
     
-    # Check for stored destination URL from pre-auth
-    next_url = session.pop('next_url', None)
-    if next_url:
-        current_app.logger.info(f"Redirecting to stored destination: {next_url}")
-        return redirect(next_url)
-    
-    return redirect(url_for('root.index'))
+        # Check for stored destination URL from pre-auth
+        next_url = session.pop('next_url', None)
+        if next_url:
+            current_app.logger.info(f"Redirecting to stored destination: {next_url}")
+            return redirect(next_url)
+
+        return redirect(url_for('root.index'))
+
+    except Exception as e:
+        # Log authentication failure
+        current_app.logger.error(f"Authentication callback failed: {str(e)}")
+        security_logger.log_authentication_attempt(
+            user_id="unknown",
+            success=False,
+            method="oidc",
+            failure_reason=str(e)
+        )
+        # Redirect to login page or error page
+        return redirect(url_for('auth.login'))
 
 @bp.route('/logout')
 def logout():
@@ -125,6 +148,13 @@ def logout():
     OIDC provider's end-session endpoint for single sign-out.
     """
     trace(current_app, 'routes.auth.logout')
+
+    # Log logout before clearing session
+    user_id = ""
+    if 'user' in session:
+        user_id = session['user'].get('sub', '')
+        security_logger.log_logout(user_id)
+
     id_token = session.get('id_token_jwt')
     session.clear()
 

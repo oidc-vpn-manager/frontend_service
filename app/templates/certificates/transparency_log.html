@@ -61,20 +61,20 @@
             </div>
             <div>
                 <label for="subject">Subject Contains:</label>
-                <input type="text" name="subject" id="subject" data-testid="subject-filter" value="{{ filters.subject or '' }}" placeholder="e.g., user@example.com">
+                <input type="text" name="subject" id="subject" data-testid="subject-filter" value="{{ (filters.subject or '') | e }}" placeholder="e.g., user@example.com">
             </div>
             <div>
                 <label for="issuer">Issuer Contains:</label>
-                <input type="text" name="issuer" id="issuer" value="{{ filters.issuer or '' }}" placeholder="e.g., OpenVPN CA">
+                <input type="text" name="issuer" id="issuer" value="{{ (filters.issuer or '') | e }}" placeholder="e.g., OpenVPN CA">
             </div>
             <div>
                 <label for="from_date">From Date:</label>
-                <input type="date" name="from_date" id="from_date" value="{{ filters.from_date or '' }}" 
+                <input type="date" name="from_date" id="from_date" value="{{ (filters.from_date or '') | e }}" 
                        pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD">
             </div>
             <div>
                 <label for="to_date">To Date:</label>
-                <input type="date" name="to_date" id="to_date" value="{{ filters.to_date or '' }}" 
+                <input type="date" name="to_date" id="to_date" value="{{ (filters.to_date or '') | e }}" 
                        pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD">
             </div>
             <div>
