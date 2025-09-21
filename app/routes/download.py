@@ -112,6 +112,13 @@ def download_profile():
             ).decode('utf-8').strip(),
             'tlscrypt_key': client_tls_crypt_key,
             'tlscrypt_version': tls_crypt_version,
+            # Default template variables to prevent undefined errors
+            'use_tcp': False,
+            'custom_port': None,
+            'enable_compression': False,
+            'mobile_settings': False,
+            # Template variable alias for consistency
+            'tls_crypt_key': client_tls_crypt_key,
         }
 
         # 6. Apply settings from optionset if specified

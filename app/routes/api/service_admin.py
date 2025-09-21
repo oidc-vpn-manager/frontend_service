@@ -19,7 +19,7 @@ from app.extensions import db, csrf
 import uuid
 from datetime import datetime, timezone
 
-bp = Blueprint('service_admin', __name__, url_prefix='/service-admin')
+bp = Blueprint('service_admin', __name__, url_prefix='/api')
 csrf.exempt(bp)
 
 
@@ -43,14 +43,23 @@ def list_all_certificates():
     trace(current_app, 'routes.api.service_admin.list_all_certificates')
 
     try:
+        from app.utils.input_validation import validate_pagination_params, InputValidationError
+
         ct_client = get_certtransparency_client()
 
-        # Extract query parameters with validation
-        params = {
-            'page': max(1, request.args.get('page', 1, type=int)),  # Ensure page >= 1
-            'limit': min(max(1, request.args.get('limit', 100, type=int)), 1000),  # Cap between 1-1000
-            'include_revoked': 'true'
-        }
+        # Extract and validate pagination parameters
+        try:
+            pagination = validate_pagination_params(
+                request.args.get('page', 1),
+                request.args.get('limit', 100)
+            )
+            params = {
+                'page': pagination['page'],
+                'limit': min(pagination['limit'], 1000),  # Cap at 1000 for admin API
+                'include_revoked': 'true'
+            }
+        except InputValidationError as e:
+            return jsonify(error="Invalid pagination parameters", details=str(e)), 400
 
         if request.args.get('active_only') == 'true':
             params['active_only'] = 'true'
@@ -58,10 +67,28 @@ def list_all_certificates():
         elif request.args.get('revoked_only') == 'true':
             params['revoked_only'] = 'true'
 
-        # Optional filters
-        for param in ['type', 'subject', 'from_date', 'to_date']:
-            if request.args.get(param):
-                params[param] = request.args.get(param)
+        # Optional filters with validation
+        from app.utils.input_validation import validate_search_filter, validate_date_string, validate_query_param
+
+        try:
+            if request.args.get('type'):
+                cert_type = request.args.get('type')
+                # Handle 'user' as alias for 'client' for backward compatibility
+                if cert_type == 'user':
+                    cert_type = 'client'
+                params['type'] = validate_query_param('type', cert_type,
+                                                    ['server', 'client', 'computer'], max_length=20)
+
+            if request.args.get('subject'):
+                params['subject'] = validate_search_filter('subject', request.args.get('subject'))
+
+            if request.args.get('from_date'):
+                params['from_date'] = validate_date_string(request.args.get('from_date'))
+
+            if request.args.get('to_date'):
+                params['to_date'] = validate_date_string(request.args.get('to_date'))
+        except InputValidationError as e:
+            return jsonify(error="Invalid filter parameters", details=str(e)), 400
 
         result = ct_client.list_certificates(**params)
 

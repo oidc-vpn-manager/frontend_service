@@ -47,7 +47,7 @@ def load_routes(app: Flask):
     app.register_blueprint(api_bp)
 
     from .api.service_admin import bp as service_admin_bp
-    app.register_blueprint(service_admin_bp, url_prefix='/api')
+    app.register_blueprint(service_admin_bp)
 
     from .profile import bp as profile_bp
     app.register_blueprint(profile_bp)
@@ -67,10 +67,26 @@ def load_routes(app: Flask):
     from .download import bp as download_bp
     app.register_blueprint(download_bp)
     
-    # Register test-only routes in development environments
+    # Register test-only routes ONLY in development environments or testing
+    # SECURITY: Critical authentication bypass prevention
     import os
-    if (app.config.get('ENVIRONMENT') == 'development' or 
-        app.config.get('FLASK_ENV') == 'development' or 
-        os.environ.get('FLASK_ENV') == 'development'):
-        from .test_auth import bp as test_auth_bp
+    is_development = (
+        app.config.get('ENVIRONMENT') == 'development' and
+        app.config.get('FLASK_ENV') == 'development' and
+        os.environ.get('FLASK_ENV') == 'development' and
+        not app.config.get('PRODUCTION', False)  # Never if production flag set
+    )
+
+    # Allow test auth routes in testing mode for functional tests
+    is_testing = app.config.get('TESTING') is True
+
+    # Additional safety: Only enable if explicitly enabled AND in development OR testing
+    enable_test_auth = os.environ.get('ENABLE_TEST_AUTH_ROUTES', '') == 'true'
+
+    if (is_development or is_testing) and enable_test_auth:
+        app.logger.warning("TEST AUTHENTICATION ROUTES ENABLED - DEVELOPMENT ONLY")
+        from .test_auth import bp as test_auth_bp, bp_root as test_auth_root_bp
         app.register_blueprint(test_auth_bp)
+        app.register_blueprint(test_auth_root_bp)
+    else:
+        app.logger.info("Test authentication routes DISABLED (production safety)")

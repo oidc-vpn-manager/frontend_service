@@ -19,29 +19,56 @@ def login():
     """
     trace(current_app, 'routes.auth.login')
     
-    # Check for CLI workflow parameters
+    # Check for CLI workflow parameters with validation
+    from app.utils.input_validation import validate_port_number, validate_alphanumeric_with_special, InputValidationError
+
     cli_port = request.args.get('cli_port')
     optionset = request.args.get('optionset', '')
-    
+
     if cli_port:
-        # Store CLI parameters in session for use after OIDC callback
-        session['cli_port'] = cli_port
-        session['cli_optionset'] = optionset
-        current_app.logger.info(f"CLI workflow initiated: port={cli_port}, optionset={optionset}")
+        try:
+            # Validate CLI port
+            validated_port = validate_port_number(cli_port)
+
+            # Validate optionset (allow alphanumeric, dash, underscore, comma for multiple options)
+            validated_optionset = validate_alphanumeric_with_special(optionset, max_length=100, allowed_chars="-_,")
+
+            # Store validated CLI parameters in session
+            session['cli_port'] = validated_port
+            session['cli_optionset'] = validated_optionset
+            current_app.logger.info(f"CLI workflow initiated: port={validated_port}, optionset={validated_optionset}")
+        except (InputValidationError, ValueError) as e:
+            current_app.logger.warning(f"Invalid CLI parameters: {e}")
+            # Continue without CLI params but don't store invalid data
+            pass
     
-    # Store intended destination URL (next parameter, session, or referer)
+    # Store intended destination URL (next parameter, session, or referer) with validation
     next_url = request.args.get('next')
-    
+
     # Check if login_required decorator already stored a destination URL
     if not next_url and 'next_url' in session:
         next_url = session['next_url']
         current_app.logger.info(f"Using destination URL from login_required: {next_url}")
-    
+
     if not next_url:
         # If no explicit next parameter, check if we came from a specific page
         next_url = request.referrer
-    
-    if next_url and next_url.startswith(request.url_root):
+
+    # Validate next_url to prevent open redirect attacks
+    # Note: Flask provides built-in protection against URL corruption and malformed URLs
+    if next_url:
+        if next_url.startswith('/'):
+            # Relative URL is safe - limit length for security
+            next_url = next_url[:500]
+        elif next_url.startswith(request.url_root):
+            # Same domain URL is safe
+            pass
+        else:
+            # External URL - reject for security
+            current_app.logger.warning(f"Rejected external redirect URL: {next_url}")
+            next_url = None
+
+    if next_url and (next_url.startswith('/') or next_url.startswith(request.url_root)):
         # Only store safe URLs from same origin
         session['next_url'] = next_url
         current_app.logger.info(f"Storing destination URL for post-auth redirect: {next_url}")

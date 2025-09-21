@@ -10,6 +10,7 @@ import hashlib
 from datetime import datetime, timezone
 from enum import Enum
 from app.extensions import db
+from app.models.base import SecureModelMixin
 from app.utils.cryptography import get_fernet
 from sqlalchemy import LargeBinary
 
@@ -33,7 +34,7 @@ class DeviceType(Enum):
     OTHER = "other"                  # Other device types
 
 
-class DevicePSK(db.Model):
+class DevicePSK(SecureModelMixin, db.Model):
     """
     Pre-Shared Key model for device/computer identity authentication.
 
@@ -46,6 +47,15 @@ class DevicePSK(db.Model):
     __tablename__ = 'device_pre_shared_keys'
 
     id = db.Column(db.Integer, primary_key=True)
+
+    # Mass assignment protection - only allow these fields during creation/update
+    _allowed_attributes = [
+        'device_name', 'device_type', 'device_serial', 'device_mac_address',
+        'certificate_type', 'common_name', 'subject_alt_names', 'location',
+        'department', 'owner_email', 'assigned_ip_range', 'dns_suffix',
+        'template_set', 'policy_group', 'expires_at', 'is_enabled',
+        'is_managed', 'created_by', 'key', 'key_hash', 'key_truncated'
+    ]
 
     # Core PSK functionality (similar to PreSharedKey)
     key_hash = db.Column(db.String(64), unique=True, nullable=False)

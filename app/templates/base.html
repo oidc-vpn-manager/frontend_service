@@ -3,11 +3,11 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{% block title %}{{ current_app.config.get('SITE_NAME') }}{% endblock %}</title>
+        <title>{% block title %}{{ config.get('SITE_NAME') }}{% endblock %}</title>
         <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
     </head>
     <body>
-        {% if current_app.config.get('FLASK_ENV') == 'development' or current_app.config.get('FLASK_CONFIG') == 'development' %}
+        {% if config.get('FLASK_ENV') == 'development' or config.get('FLASK_CONFIG') == 'development' %}
         <div class="dev-warning-banner" style="background-color: #ff6b6b; color: white; text-align: center; padding: 10px; font-weight: bold; border-bottom: 3px solid #ff5252;">
             🚨 DEVELOPMENT MODE - INSECURE CONFIGURATION 🚨
             <br>
@@ -16,7 +16,7 @@
         {% endif %}
         
         <header>
-            <div class="logo"><a href="{{ user_url_base }}{{ url_for('root.index') }}">{{ current_app.config.get('SITE_NAME') }}</a></div>
+            <div class="logo"><a href="{{ user_url_base }}{{ url_for('root.index') }}">{{ config.get('SITE_NAME') }}</a></div>
             <nav>
                 {% if 'user' in roles %}
                     {% if 'service_admin' in roles or 'system_admin' in roles or 'auditor' in roles %}
@@ -79,7 +79,7 @@
             </div>
         </main>
 
-        {% if current_app.config.get('FLASK_ENV') == 'development' or current_app.config.get('FLASK_CONFIG') == 'development' %}
+        {% if config.get('FLASK_ENV') == 'development' or config.get('FLASK_CONFIG') == 'development' %}
         <footer class="dev-warning-footer" style="background-color: #ff6b6b; color: white; text-align: center; padding: 8px; margin-top: 20px; font-size: 0.9em;">
             🚨 INSECURE DEVELOPMENT MODE - Authentication and security features may be bypassed 🚨
         </footer>

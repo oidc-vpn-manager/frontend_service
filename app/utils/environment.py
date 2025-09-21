@@ -25,10 +25,11 @@ def loadConfigValueFromFileOrEnvironment(key: str, default_value: str = '', defa
             # Read the entire content of the file and strip whitespace
             file_content = file.read().strip()
     
-        logger.debug(f'{VALUE_FILE} contains:')
+        logger.debug(f'{VALUE_FILE} contains: [REDACTED FOR SECURITY]')
 
         if file_content: # Use content if the file is not empty
-            logger.debug(file_content)
+            # Do not log file content as it may contain secrets
+            logger.debug(f'File content loaded, length: {len(file_content)} characters')
             return file_content
         
         logger.debug('---No Content---')
@@ -48,6 +49,3 @@ def loadBoolConfigValue(key: str, default: str, prefer: bool = False):
     else:
         return True if not str(os.environ.get(key, default)).lower() in false_strings else False
 
-def get_env_var(key: str, default: str = None) -> str:
-    """Simple utility to get environment variable with default."""
-    return os.environ.get(key, default)

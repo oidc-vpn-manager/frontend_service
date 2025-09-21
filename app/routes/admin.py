@@ -136,11 +136,20 @@ def list_certificates():
         if request.args.get('show_uncollapsed') == 'true':
             filters['show_uncollapsed'] = 'true'
         
-        # Sort parameters
-        if request.args.get('sort'):
-            filters['sort'] = request.args.get('sort')
-        if request.args.get('order'):
-            filters['order'] = request.args.get('order')
+        # Sort parameters - validate to prevent SQL injection
+        allowed_sort_fields = [
+            'issued_at', 'subject', 'issuer', 'serial_number',
+            'fingerprint', 'certificate_type', 'revoked_at'
+        ]
+        allowed_order_values = ['asc', 'desc']
+
+        sort_field = request.args.get('sort')
+        if sort_field and sort_field in allowed_sort_fields:
+            filters['sort'] = sort_field
+
+        order_value = request.args.get('order', '').lower()
+        if order_value and order_value in allowed_order_values:
+            filters['order'] = order_value
         
         # Get certificates from Certificate Transparency service
         client = get_certtransparency_client()

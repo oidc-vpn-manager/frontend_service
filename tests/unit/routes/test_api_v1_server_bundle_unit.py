@@ -471,3 +471,66 @@ class TestServerBundleUnit:
             mock_sign_cert.assert_called_once()
             call_kwargs = mock_sign_cert.call_args.kwargs
             assert call_kwargs['client_ip'] == '203.0.113.195'  # First IP should be used
+
+    def test_server_bundle_invalid_template_set_sanitization(self, client):
+        """Test that invalid template_set characters are sanitized and fallback to default."""
+        # Mock server templates directory with test files - need 'default.' prefix for fallback
+        test_server_files = {
+            'default.100.ovpn': 'proto udp\nport 1194\ndev tun\nca ca.crt\ncert server.crt\nkey server.key',
+        }
+
+        with patch('app.routes.api.v1.generate_key_and_csr') as mock_gen_key, \
+             patch('app.routes.api.v1.request_signed_certificate') as mock_sign_cert, \
+             patch('os.path.exists') as mock_exists, \
+             patch('os.listdir') as mock_listdir, \
+             patch('builtins.open', mock_open()) as mock_file_open:
+
+            # Setup mocks for certificate generation
+            mock_key = MagicMock()
+            mock_key.private_bytes.return_value = b'server-private-key'
+            mock_csr = MagicMock()
+            mock_csr.public_bytes.return_value = b'server-csr'
+            mock_gen_key.return_value = (mock_key, mock_csr)
+            mock_sign_cert.return_value = 'server-certificate'
+
+            # Setup mocks for file system
+            mock_exists.return_value = True
+            mock_listdir.return_value = list(test_server_files.keys())
+
+            # Setup file content mocks
+            def mock_file_contents(filename, *args, **kwargs):
+                if filename.endswith('.ovpn') and os.path.basename(filename) in test_server_files:
+                    file_content = test_server_files[os.path.basename(filename)]
+                    return mock_open(read_data=file_content)(*args, **kwargs)
+                return mock_open()(*args, **kwargs)
+
+            mock_file_open.side_effect = mock_file_contents
+
+            # Configure app with SERVER_TEMPLATES_DIR
+            client.application.config['SERVER_TEMPLATES_DIR'] = '/test/server/templates'
+
+            with client.application.app_context():
+                # Create a PSK with malicious template_set that should be sanitized
+                from app.models.presharedkey import PreSharedKey
+                from app.extensions import db
+
+                test_key = 'malicious-template-test-key'
+                test_psk = PreSharedKey(
+                    description='test-malicious-template',
+                    key=test_key,
+                    is_enabled=True,
+                    template_set='malicious@template#with$special&chars'  # Template with invalid chars after basename
+                )
+                db.session.add(test_psk)
+                db.session.commit()
+
+                # Test with malicious template_set
+                response = client.post('/api/v1/server/bundle',
+                                     headers={'Authorization': f'Bearer {test_key}'},
+                                     json={'description': 'test-server'})
+
+                assert response.status_code == 200
+
+                # Verify that the certificate generation was called (indicating code flowed correctly)
+                mock_gen_key.assert_called_once()
+                mock_sign_cert.assert_called_once()

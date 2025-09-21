@@ -323,7 +323,7 @@ class TestListAllCertificates:
             'page': 3,
             'limit': 50,
             'include_revoked': 'true',
-            'type': 'user',
+            'type': 'client',  # 'user' is converted to 'client' for CT API
             'subject': 'CN=test-user',
             'from_date': '2023-01-01',
             'to_date': '2023-12-31'
@@ -356,6 +356,42 @@ class TestListAllCertificates:
         data = response.get_json()
         assert data['error'] == "Failed to retrieve certificates"
         assert "CT service unavailable" in data['details']
+
+    def test_list_all_certificates_invalid_pagination_parameters(self, service_admin_client):
+        """Test certificate listing with invalid pagination parameters (lines 61-62)."""
+        # Test with invalid page parameter (should trigger InputValidationError)
+        response = service_admin_client.get('/api/certificates?page=invalid')
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['error'] == "Invalid pagination parameters"
+        assert 'details' in data
+
+        # Test with invalid limit parameter
+        response = service_admin_client.get('/api/certificates?limit=not_a_number')
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['error'] == "Invalid pagination parameters"
+        assert 'details' in data
+
+    def test_list_all_certificates_invalid_date_parameters(self, service_admin_client):
+        """Test certificate listing with invalid date parameters (lines 90-91)."""
+        # Test with invalid from_date parameter (should trigger InputValidationError)
+        response = service_admin_client.get('/api/certificates?from_date=invalid-date')
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['error'] == "Invalid filter parameters"
+        assert 'details' in data
+
+        # Test with invalid to_date parameter
+        response = service_admin_client.get('/api/certificates?to_date=not-a-date')
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['error'] == "Invalid filter parameters"
+        assert 'details' in data
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
     @patch('app.utils.security_logging.security_logger.log_data_access')

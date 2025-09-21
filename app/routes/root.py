@@ -117,7 +117,15 @@ def index():
                     encryption_algorithm=serialization.NoEncryption()
                 ).decode('utf-8').strip(),
                 'tlscrypt_key': client_tls_crypt_key,
+                'tls_crypt_key': client_tls_crypt_key,  # Alias for template compatibility
                 'tlscrypt_version': tls_crypt_version,
+                # Default values for template compatibility
+                'protocol': 'udp',
+                'port': 1194,
+                'use_tcp': False,
+                'custom_port': None,
+                'enable_compression': False,
+                'mobile_settings': False,
             }
 
             # 6. Apply settings from user-selected options

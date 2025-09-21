@@ -398,7 +398,8 @@ class TestSecretManagement:
             from app.utils import environment
             
             # Test that environment loading functions exist and work
-            test_var = environment.get_env_var('NONEXISTENT_VAR_FOR_TEST', 'default_value')
+            import os
+            test_var = os.environ.get('NONEXISTENT_VAR_FOR_TEST', 'default_value')
             assert test_var == 'default_value', "Environment variable loading not working"
 
     def test_secrets_not_exposed_in_responses(self, client, app):

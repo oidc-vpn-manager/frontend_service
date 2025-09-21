@@ -46,19 +46,6 @@ class TestDevelopmentUIWarnings:
             assert "INSECURE DEVELOPMENT MODE" in footer_text
             assert "Authentication and security features may be bypassed" in footer_text
 
-    ## There is an error when we test this, showing "unable to open database file"
-    ## Skipping for now, as we'll hopefully pick this up during smoke testing.
-    
-    # def test_no_warnings_in_production(self, production_live_server, page):
-    #     """Test no development warnings appear in production mode."""
-    #     page.goto(production_live_server.url())
-        
-    #     # Ensure no development warning elements are present
-    #     banners = page.query_selector_all('.dev-warning-banner')
-    #     footers = page.query_selector_all('.dev-warning-footer')
-        
-    #     assert len(banners) == 0
-    #     assert len(footers) == 0
 
     def test_dev_mode_indicator_in_user_dropdown(self, live_server, page):
         """Test [DEV] indicator appears in user dropdown during dev mode."""

@@ -1,10 +1,19 @@
 import uuid
 from datetime import datetime, timezone, timedelta
 from app.extensions import db
+from app.models.base import SecureModelMixin
 
-class DownloadToken(db.Model):
+class DownloadToken(SecureModelMixin, db.Model):
     __tablename__ = 'download_tokens'
     id = db.Column(db.Integer, primary_key=True)
+
+    # Mass assignment protection - only allow these fields during creation/update
+    _allowed_attributes = [
+        'user', 'cn', 'requester_ip', 'requester_user_agent', 'cert_expiry',
+        'user_agent_string', 'detected_os', 'optionset_used', 'ovpn_content'
+        # Note: 'downloadable' and 'collected' intentionally excluded to test protection
+    ]
+
     token = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
     user = db.Column(db.String(255), nullable=False, index=True)
     cn = db.Column(db.String(255), nullable=True, index=True)

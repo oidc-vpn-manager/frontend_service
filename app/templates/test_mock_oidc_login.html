@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Mock OIDC Login{% endblock %}
+{% block content %}
+    <div style="max-width: 400px; margin: 50px auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+        <h1>Mock OIDC Login</h1>
+        <p>Simulating OIDC authentication flow...</p>
+        <form id="mock-form" action="/mock_oidc_callback" method="POST">
+            <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+            <input type="hidden" name="email" value="test@example.com">
+            <input type="hidden" name="name" value="Test User">
+            <input type="hidden" name="groups" value="users">
+            <button type="submit" style="width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 3px;">Continue (Auto-submit in 1 second)</button>
+        </form>
+        <script>
+            setTimeout(function() {
+                document.getElementById('mock-form').submit();
+            }, 1000);
+        </script>
+    </div>
+{% endblock %}

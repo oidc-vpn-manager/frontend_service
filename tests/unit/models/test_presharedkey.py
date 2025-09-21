@@ -37,20 +37,23 @@ class TestPreSharedKey:
     def test_is_valid_active_key(self, app):
         """Tests that an active key without an expiry is valid."""
         with app.app_context():
-            key = PreSharedKey(description="test.com", is_enabled=True, expires_at=None)
+            key = PreSharedKey(description="test.com", expires_at=None)
+            key.is_enabled = True  # Set directly to bypass mass assignment protection
         assert key.is_valid() is True
 
     def test_is_valid_disabled_key(self, app):
         """Tests that a disabled key is not valid."""
         with app.app_context():
-            key = PreSharedKey(description="test.com", is_enabled=False)
+            key = PreSharedKey(description="test.com")
+            key.is_enabled = False  # Set directly to bypass mass assignment protection
         assert key.is_valid() is False
 
     def test_is_valid_unexpired_key(self, app):
         """Tests that a key within its expiry window is valid."""
         expiry = datetime.now(timezone.utc) + timedelta(days=1)
         with app.app_context():
-            key = PreSharedKey(description="test.com", is_enabled=True, expires_at=expiry)
+            key = PreSharedKey(description="test.com", expires_at=expiry)
+            key.is_enabled = True  # Set directly to bypass mass assignment protection
         
         with freeze_time(datetime.now(timezone.utc)):
             assert key.is_valid() is True
@@ -59,7 +62,8 @@ class TestPreSharedKey:
         """Tests that an expired key is not valid."""
         expiry = datetime.now(timezone.utc) - timedelta(days=1)
         with app.app_context():
-            key = PreSharedKey(description="test.com", is_enabled=True, expires_at=expiry)
+            key = PreSharedKey(description="test.com", expires_at=expiry)
+            key.is_enabled = True  # Set directly to bypass mass assignment protection
         
         with freeze_time(datetime.now(timezone.utc)):
             assert key.is_valid() is False
@@ -70,7 +74,8 @@ class TestPreSharedKey:
         expiry_naive = datetime.now() + timedelta(days=1)  # No timezone.utc
         
         with app.app_context():
-            key = PreSharedKey(description="test.com", is_enabled=True, expires_at=expiry_naive)
+            key = PreSharedKey(description="test.com", expires_at=expiry_naive)
+            key.is_enabled = True  # Set directly to bypass mass assignment protection
         
         # This should trigger line 52 where naive datetime is made timezone-aware
         with freeze_time(datetime.now(timezone.utc)):
@@ -79,7 +84,8 @@ class TestPreSharedKey:
     def test_revoke_method(self, app):
         """Tests the revoke method (line 60)."""
         with app.app_context():
-            key = PreSharedKey(description="test.com", is_enabled=True)
+            key = PreSharedKey(description="test.com")
+            key.is_enabled = True  # Set directly to bypass mass assignment protection
             
             # Key should start as enabled
             assert key.is_enabled is True

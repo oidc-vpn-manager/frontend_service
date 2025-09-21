@@ -19,7 +19,8 @@ class TestDownloadToken:
         """
         # Arrange: Create a token at a specific time
         creation_time = datetime(2025, 7, 21, 10, 0, 0, tzinfo=timezone.utc)
-        token = DownloadToken(created_at=creation_time)
+        token = DownloadToken()
+        token.created_at = creation_time  # Set directly to bypass mass assignment protection
         
         # Act: Freeze time to be 4 minutes and 59 seconds after creation
         with freeze_time("2025-07-21 10:04:59"):
@@ -34,7 +35,8 @@ class TestDownloadToken:
         """
         # Arrange: Create a token at a specific time
         creation_time = datetime(2025, 7, 21, 10, 0, 0, tzinfo=timezone.utc)
-        token = DownloadToken(created_at=creation_time)
+        token = DownloadToken()
+        token.created_at = creation_time  # Set directly to bypass mass assignment protection
         
         # Act: Freeze time to be 5 minutes and 1 second after creation
         with freeze_time("2025-07-21 10:05:01"):
@@ -50,7 +52,8 @@ class TestDownloadToken:
         """
         # Arrange: Create a token at a specific time
         creation_time = datetime(2025, 7, 21, 10, 0, 0, tzinfo=timezone.utc)
-        token = DownloadToken(created_at=creation_time)
+        token = DownloadToken()
+        token.created_at = creation_time  # Set directly to bypass mass assignment protection
         
         # Act: Freeze time to be exactly 5 minutes after creation
         with freeze_time("2025-07-21 10:05:00"):
@@ -67,7 +70,8 @@ class TestDownloadToken:
         # Arrange: Create a token with a naive datetime object
         # This simulates data that might have been created without timezone info
         creation_time_naive = datetime(2025, 7, 21, 10, 0, 0)
-        token = DownloadToken(created_at=creation_time_naive)
+        token = DownloadToken()
+        token.created_at = creation_time_naive  # Set directly to bypass mass assignment protection
         
         # Act: Freeze time to be just outside the 5-minute window in UTC
         with freeze_time("2025-07-21 10:05:01"):

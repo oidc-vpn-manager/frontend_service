@@ -69,10 +69,18 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info and record.exc_info != (None, None, None):
             try:
                 exc_type, exc_value, exc_traceback = record.exc_info
+
+                # Only include stack traces in development environments
+                # Note: Flask provides built-in protection for accessing current_app outside application context
+                include_traceback = False
+                from flask import current_app
+                if current_app and current_app.config.get('ENVIRONMENT') == 'development':
+                    include_traceback = True
+
                 log_entry['exception'] = {
                     'type': exc_type.__name__ if exc_type else None,
                     'message': str(exc_value) if exc_value else None,
-                    'traceback': self.formatException(record.exc_info) if exc_traceback else None
+                    'traceback': self.formatException(record.exc_info) if (exc_traceback and include_traceback) else None
                 }
             except (AttributeError, TypeError):
                 # Handle cases where exc_info is not a proper tuple
@@ -284,7 +292,14 @@ def configure_security_logging(app):
     @app.errorhandler(500)
     def log_internal_error(error): # pragma: no cover
         ## PRAGMA-NO-COVER Exception; JS 2025-09-15 500 error handler requires application error to test
-        app.logger.error(f"Internal server error: {error}", exc_info=True)
+
+        # Only include detailed exception info in development
+        if app.config.get('ENVIRONMENT') == 'development':
+            app.logger.error(f"Internal server error: {error}", exc_info=True)
+        else:
+            # In production, log the error but without sensitive stack trace details
+            app.logger.error(f"Internal server error occurred (error logged separately for security)")
+
         security_logger.log_system_error(
             error_type="internal_server_error",
             error_message=str(error),

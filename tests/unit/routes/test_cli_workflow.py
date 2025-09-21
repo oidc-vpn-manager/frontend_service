@@ -54,7 +54,7 @@ class TestAuthLogin:
         
         # Should have stored CLI params in session
         with client.session_transaction() as session:
-            assert session['cli_port'] == '12345'
+            assert session['cli_port'] == 12345  # Port validation returns integer
             assert session['cli_optionset'] == 'option1,option2'
     
     def test_login_with_cli_port_only(self, client, mock_oauth, app):
@@ -65,7 +65,7 @@ class TestAuthLogin:
         assert response.status_code == 302
         
         with client.session_transaction() as session:
-            assert session['cli_port'] == '8080'
+            assert session['cli_port'] == 8080  # Port validation returns integer
             assert session['cli_optionset'] == ''  # Default empty string
 
 
@@ -150,13 +150,13 @@ class TestDownloadRoute:
         # Create expired token
         with app_with_db.app_context():
             expired_token = DownloadToken(
-                token=str(uuid.uuid4()),
                 user='user123',
                 cn='user@example.com',
                 requester_ip='127.0.0.1',
-                optionset_used='',
-                created_at=datetime.now(timezone.utc) - timedelta(minutes=10)  # 10 minutes ago
+                optionset_used=''
             )
+            expired_token.token = str(uuid.uuid4())  # Set directly to bypass mass assignment protection
+            expired_token.created_at = datetime.now(timezone.utc) - timedelta(minutes=10)  # Set directly to bypass mass assignment protection
             from app.extensions import db
             db.session.add(expired_token)
             db.session.commit()
@@ -170,13 +170,13 @@ class TestDownloadRoute:
         # Create used token
         with app_with_db.app_context():
             used_token = DownloadToken(
-                token=str(uuid.uuid4()),
                 user='user123',
                 cn='user@example.com',
                 requester_ip='127.0.0.1',
-                optionset_used='',
-                collected=True  # Already collected
+                optionset_used=''
             )
+            used_token.token = str(uuid.uuid4())  # Set directly to bypass mass assignment protection
+            used_token.collected = True  # Set directly to bypass mass assignment protection
             from app.extensions import db
             db.session.add(used_token)
             db.session.commit()
@@ -286,24 +286,24 @@ class TestDownloadTokenModel:
         with app_with_db.app_context():
             # Fresh token (should not be expired)
             fresh_token = DownloadToken(
-                token=str(uuid.uuid4()),
                 user='user123',
                 cn='user@example.com',
                 requester_ip='127.0.0.1',
-                optionset_used='',
-                created_at=datetime.now(timezone.utc)
+                optionset_used=''
             )
+            fresh_token.token = str(uuid.uuid4())  # Set directly to bypass mass assignment protection
+            fresh_token.created_at = datetime.now(timezone.utc)  # Set directly to bypass mass assignment protection
             assert not fresh_token.is_download_window_expired()
             
             # Expired token (older than 5 minutes)
             expired_token = DownloadToken(
-                token=str(uuid.uuid4()),
                 user='user123',
                 cn='user@example.com',
                 requester_ip='127.0.0.1',
-                optionset_used='',
-                created_at=datetime.now(timezone.utc) - timedelta(minutes=6)
+                optionset_used=''
             )
+            expired_token.token = str(uuid.uuid4())  # Set directly to bypass mass assignment protection
+            expired_token.created_at = datetime.now(timezone.utc) - timedelta(minutes=6)  # Set directly to bypass mass assignment protection
             assert expired_token.is_download_window_expired()
 
 

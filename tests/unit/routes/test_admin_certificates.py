@@ -491,10 +491,14 @@ class TestBulkRevokeComputerCertificates:
             from app.models.presharedkey import PreSharedKey
             from app.extensions import db
 
-            psk1 = PreSharedKey(description="computer1.vpn.com", psk_type="computer", is_enabled=True, key="test-key-1")
-            psk2 = PreSharedKey(description="computer2.vpn.com", psk_type="computer", is_enabled=True, key="test-key-2")
-            psk3 = PreSharedKey(description="user.vpn.com", psk_type="user", is_enabled=True, key="test-key-3")  # Should not appear
-            psk4 = PreSharedKey(description="disabled.vpn.com", psk_type="computer", is_enabled=False, key="test-key-4")  # Should not appear
+            psk1 = PreSharedKey(description="computer1.vpn.com", psk_type="computer", key="test-key-1")
+            psk1.is_enabled = True  # Set directly to bypass mass assignment protection
+            psk2 = PreSharedKey(description="computer2.vpn.com", psk_type="computer", key="test-key-2")
+            psk2.is_enabled = True  # Set directly to bypass mass assignment protection
+            psk3 = PreSharedKey(description="user.vpn.com", psk_type="user", key="test-key-3")  # Should not appear
+            psk3.is_enabled = True  # Set directly to bypass mass assignment protection
+            psk4 = PreSharedKey(description="disabled.vpn.com", psk_type="computer", key="test-key-4")  # Should not appear
+            psk4.is_enabled = False  # Set directly to bypass mass assignment protection
 
             db.session.add_all([psk1, psk2, psk3, psk4])
             db.session.commit()

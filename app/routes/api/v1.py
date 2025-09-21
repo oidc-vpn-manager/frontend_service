@@ -23,7 +23,26 @@ csrf.exempt(bp)
 
 def psk_type_required(required_type):
     """
-    Decorator to ensure PSK is of the correct type (server or computer).
+    Decorator factory that creates a decorator to validate PSK type before endpoint execution.
+
+    This decorator ensures that the pre-shared key (PSK) passed to the endpoint
+    is of the correct type (either 'server' or 'computer'). Used for API endpoints
+    that handle different certificate types.
+
+    Args:
+        required_type (str): The required PSK type ('server' or 'computer').
+
+    Returns:
+        function: A decorator function that validates PSK type.
+
+    Raises:
+        HTTP 403: Returns JSON error if PSK type doesn't match required type.
+
+    Example:
+        >>> @psk_type_required('server')
+        >>> def server_endpoint(psk_object):
+        >>>     # This function only executes if psk_object.psk_type == 'server'
+        >>>     pass
     """
     def decorator(f):
         def wrapper(psk_object, *args, **kwargs):
@@ -42,8 +61,44 @@ def psk_type_required(required_type):
 @psk_type_required('server')
 def server_bundle(psk_object):
     """
-    Server bundle endpoint. Returns a tar file containing all components
-    needed to set up an OpenVPN server: certificates, keys, and configurations.
+    Generate and return a complete OpenVPN server bundle as a compressed tar archive.
+
+    This endpoint creates all necessary components for setting up an OpenVPN server:
+    - Server certificate and private key (generated with unique timestamp)
+    - CA certificate chain (intermediate + root certificates)
+    - TLS-Crypt key for additional security
+    - Server configuration files matching the PSK's template set
+
+    The function generates a server certificate, gets it signed by the signing service,
+    tracks the request in the certificate transparency log, and packages everything
+    into a gzipped tar archive.
+
+    Args:
+        psk_object: PreSharedKey object (injected by @psk_required decorator)
+                   Must be of type 'server' (enforced by @psk_type_required)
+
+    Returns:
+        flask.Response: Gzipped tar file containing:
+            - ca-chain.crt: CA certificate chain
+            - server.crt: Signed server certificate
+            - server.key: Server private key (unencrypted)
+            - tls-crypt.key: TLS-Crypt key for additional security
+            - *.ovpn: Server configuration files matching template set
+
+        Content-Type: application/gzip
+        Content-Disposition: attachment; filename=openvpn-server-{description}.tar.gz
+
+    Raises:
+        HTTP 403: If PSK is not of type 'server'
+        HTTP 500: If certificate generation or signing fails
+        HTTP 503: If signing service is unavailable
+
+    Example:
+        >>> # Request with valid server PSK
+        >>> GET /api/v1/server/bundle
+        >>> Authorization: Bearer {server_psk}
+        >>>
+        >>> # Returns tar.gz containing all server setup files
     """
     trace(current_app, 'routes.api.v1.server_bundle')
     
@@ -105,10 +160,22 @@ def server_bundle(psk_object):
         server_templates_dir = current_app.config.get('SERVER_TEMPLATES_DIR')
         
         if server_templates_dir and os.path.exists(server_templates_dir):
-            current_app.logger.info(f"Looking for server config matching template set '{psk_object.template_set}' in {server_templates_dir}")
+            # Sanitize template_set to prevent malicious string matching patterns
+            # Note: Flask's os.listdir() returns basenames and os.path.join() provides some protection,
+            # but we validate input to prevent malicious template_set values used in string matching
+            safe_template_set = os.path.basename(psk_object.template_set) if psk_object.template_set else ''
+
+            # Validate template_set contains only safe characters
+            import re
+            if not re.match(r'^[a-zA-Z0-9_-]+$', safe_template_set):
+                current_app.logger.warning(f"Invalid template_set characters detected: {psk_object.template_set}")
+                safe_template_set = 'default'  # Fallback to safe default
+
+            current_app.logger.info(f"Looking for server config matching template set '{safe_template_set}' in {server_templates_dir}")
             for filename in os.listdir(server_templates_dir):
-                # Check if filename starts with the template set name (e.g., "JustTCP.0443.ovpn")
-                if filename.endswith('.ovpn') and filename.startswith(psk_object.template_set + '.'):
+                # Note: os.listdir() returns basenames, providing inherent path traversal protection
+                # Check if filename starts with the safe template set name (e.g., "JustTCP.0443.ovpn")
+                if filename.endswith('.ovpn') and filename.startswith(safe_template_set + '.'):
                     filepath = os.path.join(server_templates_dir, filename)
                     try:
                         with open(filepath, 'r') as f:
@@ -148,7 +215,7 @@ def server_bundle(psk_object):
             
             # Add TLS-Crypt key
             if master_tls_key is not None:
-                current_app.logger.debug(f"Adding server_tls_crypt_key: {master_tls_key is not None}, value: '{master_tls_key}'")
+                current_app.logger.debug(f"Adding server_tls_crypt_key: {master_tls_key is not None}, length: {len(master_tls_key) if master_tls_key else 0}")
                 tls_key_info = tarfile.TarInfo('tls-crypt.key')
                 tls_key_info.size = len(master_tls_key.encode('utf-8'))
                 tar.addfile(tls_key_info, io.BytesIO(master_tls_key.encode('utf-8')))
@@ -212,9 +279,44 @@ def server_bundle(psk_object):
 @psk_type_required('computer')
 def computer_bundle(psk_object):
     """
-    Computer-identity bundle endpoint. Returns a tar file containing all components
-    needed for computer-identity authentication (site-to-site VPN, managed assets).
-    Uses computer certificates instead of server certificates.
+    Generate and return an OpenVPN computer identity configuration file.
+
+    This endpoint creates a computer identity certificate and configuration for
+    machine-to-machine VPN connections (site-to-site VPN, managed assets).
+    Unlike the server bundle, this returns a single .ovpn configuration file
+    with embedded certificates, similar to user profiles but for computer identities.
+
+    The function generates a computer certificate (signed as 'client' type),
+    renders it through the template system using the PSK's template set,
+    and returns a complete OpenVPN client configuration.
+
+    Args:
+        psk_object: PreSharedKey object (injected by @psk_required decorator)
+                   Must be of type 'computer' (enforced by @psk_type_required)
+
+    Returns:
+        flask.Response: Single .ovpn configuration file containing:
+            - OpenVPN client configuration directives
+            - Embedded CA certificate chain
+            - Embedded computer certificate
+            - Embedded computer private key
+            - Embedded TLS-Crypt key
+            - Template-specific configuration (ports, protocols, etc.)
+
+        Content-Type: application/x-openvpn-profile
+        Content-Disposition: attachment; filename=computer-{description}.ovpn
+
+    Raises:
+        HTTP 403: If PSK is not of type 'computer'
+        HTTP 500: If certificate generation, signing, or template rendering fails
+        HTTP 503: If signing service is unavailable
+
+    Example:
+        >>> # Request with valid computer PSK
+        >>> GET /api/v1/computer/bundle
+        >>> Authorization: Bearer {computer_psk}
+        >>>
+        >>> # Returns single .ovpn file with embedded certificates
     """
     trace(current_app, 'routes.api.v1.computer_bundle')
 
@@ -286,6 +388,13 @@ def computer_bundle(psk_object):
             'tlscrypt_key': computer_tls_crypt_key or '',
             'tlscrypt_version': tls_crypt_version,
             'userinfo': {'name': f'Computer Identity {psk_object.description}-{timestamp}', 'email': f'computer-{psk_object.description}-{timestamp}@local'},
+            # Default template variables to prevent undefined errors
+            'use_tcp': False,
+            'custom_port': None,
+            'enable_compression': False,
+            'mobile_settings': False,
+            # Template variable alias for consistency
+            'tls_crypt_key': computer_tls_crypt_key or '',
         }
 
         # 6. Generate computer configuration using template rendering (like user profiles)

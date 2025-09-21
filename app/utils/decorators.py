@@ -31,11 +31,19 @@ def psk_required(f):
         sent_key = auth_header.split('Bearer ')[1]
         
         # 3. Find the key in the database by searching through all PSKs
+        # Use constant-time approach to prevent timing attacks during PSK enumeration
         psk_object = None
-        for candidate_psk in PreSharedKey.query.filter_by(is_enabled=True).all():
-            if candidate_psk.is_valid() and candidate_psk.verify_key(sent_key):
+        valid_psks = PreSharedKey.query.filter_by(is_enabled=True).all()
+
+        for candidate_psk in valid_psks:
+            # Always call verify_key to maintain constant timing regardless of validity
+            is_valid_psk = candidate_psk.is_valid()
+            key_matches = candidate_psk.verify_key(sent_key)
+
+            # Use constant-time logic to avoid early termination timing leaks
+            if is_valid_psk and key_matches and psk_object is None:
                 psk_object = candidate_psk
-                break
+                # Continue the loop to maintain constant timing
         
         if not psk_object:
             security_logger.log_api_authentication_failure(

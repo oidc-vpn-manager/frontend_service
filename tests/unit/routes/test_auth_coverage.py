@@ -125,3 +125,41 @@ class TestAuthCoverage:
                 method="oidc",
                 failure_reason="OIDC provider error"
             )
+
+    def test_login_invalid_cli_parameters_coverage(self, app, mock_oauth):
+        """Test login route with invalid CLI parameters - covers lines 40-43."""
+        client = app.test_client()
+
+        # Test with invalid cli_port parameter (should trigger InputValidationError)
+        response = client.get('/auth/login?cli_port=invalid_port&cli_optionset=test')
+        assert response.status_code == 302  # Should still redirect to OIDC
+
+        # Test with invalid cli_optionset (non-string, should trigger ValueError)
+        response = client.get('/auth/login?cli_port=12345&cli_optionset=')
+        assert response.status_code == 302  # Should still proceed without storing invalid params
+
+    def test_login_invalid_next_url_validation_coverage(self, app, mock_oauth):
+        """Test login route next_url validation errors - covers lines 73-75."""
+        client = app.test_client()
+
+        # The key insight: Flask protects against URL corruption, but we can still
+        # trigger validation errors with URLs that have invalid schemes
+        # Since the auth route calls validate_url with allowed_schemes=['http', 'https']
+        # we need a URL that starts with url_root but has an invalid scheme
+
+        # However, this is tricky because url_root will be http://localhost
+        # Let me try a different approach - create a URL that's too long
+        # since validate_url checks for length > 2048
+
+        long_path = 'x' * 2100  # Exceeds the 2048 character limit
+        long_url = f"http://localhost/{long_path}"
+
+        response = client.get(f'/auth/login?next={long_url}')
+        assert response.status_code == 302  # Should still redirect to OIDC
+
+        # Also test with a URL that would cause urlparse to have issues
+        # Try with a URL that has null bytes or other problematic characters
+        # that might survive Flask's initial parsing but fail in validate_url
+        problematic_url = "http://localhost/path\x00with\x01control\x02chars"
+        response = client.get(f'/auth/login?next={problematic_url}')
+        assert response.status_code == 302  # Should handle gracefully

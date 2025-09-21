@@ -12,4 +12,6 @@ config_name = os.getenv('ENVIRONMENT', 'development')
 application = create_app(config_name)
 
 if __name__ == '__main__':
-    application.run(debug=True, host='0.0.0.0', port=8600)
+    # Only enable debug mode in development environments
+    debug_mode = config_name.lower() in ['development', 'dev', 'local']
+    application.run(debug=debug_mode, host='0.0.0.0', port=8600)

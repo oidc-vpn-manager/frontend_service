@@ -503,9 +503,9 @@ class TestDevicePSKModel:
             offline_device = DevicePSK(
                 device_name='offline-device',
                 device_type=DeviceType.IOT_DEVICE,
-                last_seen_at=datetime.now(timezone.utc) - timedelta(hours=48),
                 created_by='admin@example.com'
             )
+            offline_device.last_seen_at = datetime.now(timezone.utc) - timedelta(hours=48)  # Set directly to bypass mass assignment protection
 
             db.session.add_all([workstation1, workstation2, server1, offline_device])
             db.session.commit()

@@ -38,6 +38,10 @@ def app(httpserver, monkeypatch):
     
     # Set TESTING in environment so test routes get registered during app creation
     monkeypatch.setenv('TESTING', 'True')
+    # Enable test auth routes for functional testing
+    monkeypatch.setenv('ENABLE_TEST_AUTH_ROUTES', 'true')
+    # Set FLASK_ENV for test auth route registration
+    monkeypatch.setenv('FLASK_ENV', 'development')
     
     app = create_app('development')
     
@@ -48,6 +52,8 @@ def app(httpserver, monkeypatch):
     app.config.update({
         "TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
         "WTF_CSRF_ENABLED": False,
+        "ENVIRONMENT": "development",
+        "FLASK_CONFIG": "development",
         "ROOT_CA_CERTIFICATE": "test-root-ca-cert",
         "INTERMEDIATE_CA_CERTIFICATE": "test-intermediate-ca-cert",
         "OPENVPN_TLS_CRYPT_KEY": "-----BEGIN OpenVPN Static key V1-----\ne4b9c6f8a1d2e3f4b5c8d1e6f7a0c3d6\nf1e4d7a0c3f6b9e2c5f8a1d4e7b0c3f6\na3f6b9c2e5f8a1d4e7b0c3f6b9c2e5f8\nd6f9c2e5a8b1d4e7b0c3f6b9c2e5f8a1\n-----END OpenVPN Static key V1-----",

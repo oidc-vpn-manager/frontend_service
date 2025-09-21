@@ -57,20 +57,40 @@ def process_tls_crypt_key(master_key_pem: str):
         return None, None
 
     lines = master_key_pem.strip().split('\n')
-    header = lines[0]
-    key_data = "".join(lines[1:-1])
 
-    if header == '-----BEGIN OpenVPN Static key V1-----':
+    # Find the BEGIN line, skipping any comments
+    begin_line = None
+    begin_index = 0
+    for i, line in enumerate(lines):
+        if line.startswith('-----BEGIN OpenVPN'):
+            begin_line = line
+            begin_index = i
+            break
+
+    if not begin_line:
+        raise ValueError("Unrecognized TLS-Crypt key format.")
+
+    # Find the END line
+    end_index = len(lines) - 1
+    for i in range(begin_index + 1, len(lines)):
+        if lines[i].startswith('-----END OpenVPN'):
+            end_index = i
+            break
+
+    # Extract key data between BEGIN and END lines
+    key_data = "".join(lines[begin_index + 1:end_index])
+
+    if begin_line == '-----BEGIN OpenVPN Static key V1-----':
         return 1, master_key_pem
-    
-    if header == '-----BEGIN OpenVPN TLS Crypt V2 Server Key-----':
+
+    if begin_line == '-----BEGIN OpenVPN TLS Crypt V2 Server Key-----':
         server_key = TLSCryptV2Key(bytes.fromhex(key_data))
         client_key_data = server_key.generate_client_key()
-        
+
         client_key_pem = "-----BEGIN OpenVPN TLS Crypt V2 Client Key-----\n"
         client_key_pem += client_key_data.hex()
         client_key_pem += "\n-----END OpenVPN TLS Crypt V2 Client Key-----\n"
-        
+
         return 2, client_key_pem
 
     raise ValueError("Unrecognized TLS-Crypt key format.")

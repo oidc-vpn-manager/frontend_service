@@ -44,6 +44,40 @@ class TestJSONFormatterEdgeCases:
         # Request context fields should not be present
         assert 'request_context' not in log_data
 
+    def test_format_with_exception_outside_app_context(self):
+        """Test JSONFormatter with exception outside application context."""
+        formatter = JSONFormatter()
+        logger = logging.getLogger('test')
+
+        # Create an exception to log
+        try:
+            raise ValueError("Test exception for logging")
+        except ValueError:
+            exc_info = sys.exc_info()
+
+        record = logger.makeRecord(
+            name='test_logger',
+            level=logging.ERROR,
+            fn='test.py',
+            lno=42,
+            msg='Error with exception outside app context',
+            args=(),
+            exc_info=exc_info
+        )
+
+        # Format outside Flask application context - Flask handles this gracefully
+        formatted = formatter.format(record)
+        log_data = json.loads(formatted)
+
+        # Should still format successfully
+        assert log_data['level'] == 'ERROR'
+        assert log_data['message'] == 'Error with exception outside app context'
+        # Exception info should be present but without traceback (since no Flask context)
+        assert 'exception' in log_data
+        assert log_data['exception']['type'] == 'ValueError'
+        assert log_data['exception']['message'] == 'Test exception for logging'
+        assert log_data['exception']['traceback'] is None  # No traceback outside app context
+
     def test_format_with_malformed_exc_info(self):
         """Test JSONFormatter with malformed exception info (lines 77-79)."""
         formatter = JSONFormatter()

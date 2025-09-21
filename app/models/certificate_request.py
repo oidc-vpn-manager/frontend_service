@@ -7,20 +7,31 @@ including user agent, OS detection, and request details.
 
 from datetime import datetime, timezone
 from app.extensions import db
+from app.models.base import SecureModelMixin
 from sqlalchemy import Text
 
 
-class CertificateRequest(db.Model):
+class CertificateRequest(SecureModelMixin, db.Model):
     """
     Tracks metadata for certificate generation requests.
-    
+
     This model captures information about who requested certificates,
     when they were requested, and details about the requesting environment
     (user agent, OS, IP address, etc.).
     """
     __tablename__ = 'certificate_requests'
-    
+
     id = db.Column(db.Integer, primary_key=True)
+
+    # Mass assignment protection - only allow these fields during creation/update
+    _allowed_attributes = [
+        'common_name', 'certificate_type', 'user_id', 'user_email',
+        'client_ip', 'raw_user_agent', 'detected_os', 'os_version',
+        'browser', 'browser_version', 'is_mobile', 'template_name',
+        'template_set', 'signing_successful', 'signing_error_message',
+        'request_source'
+        # Note: certificate_serial intentionally excluded for security
+    ]
     
     # Certificate identification
     common_name = db.Column(db.String(255), nullable=False, index=True)
