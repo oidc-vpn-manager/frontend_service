@@ -33,33 +33,42 @@ def new_psk():
     """Handles creation of a new Pre-Shared Key."""
     trace(current_app, 'routes.admin.new_psk')
     from app.utils.server_templates import get_template_set_choices
-    
+
     form = NewPskForm()
-    
+
     # Populate template set choices
     template_choices = get_template_set_choices()
     if not template_choices:
         flash('No server template sets found. Please configure server templates.', 'error')
         return redirect(url_for('admin.list_psks'))
-    
+
     form.template_set.choices = template_choices
-    
-    if form.validate_on_submit():
+
+    # Validate form submission with error handling for malformed input
+    try:
+        form_validated = form.validate_on_submit()
+    except (ValueError, KeyError, AttributeError) as e:
+        # Handle malformed form data gracefully (e.g., injected fields like __proto__, constructor)
+        current_app.logger.warning(f"Malformed form submission detected: {e}")
+        flash('Invalid form data submitted. Please try again.', 'error')
+        return render_template('admin/psk_new.html', form=form)
+
+    if form_validated:
         # Server-side validation: ensure template_set is valid (default to first choice if empty)
         if not form.template_set.data and template_choices:
             # Default to first template set if none selected
             form.template_set.data = template_choices[0][0]
-            
+
         if form.template_set.data:
             valid_template_names = [choice[0] for choice in template_choices]
             if form.template_set.data not in valid_template_names:
                 form.template_set.errors.append('Invalid template set selected.')
                 return render_template('admin/psk_new.html', form=form)
-        
+
         import uuid
         # Generate the plaintext PSK
         plaintext_psk = str(uuid.uuid4())
-        
+
         # Create the PSK record (this will hash the key automatically)
         new_key = PreSharedKey(
             description=form.description.data,
@@ -69,7 +78,7 @@ def new_psk():
         )
         db.session.add(new_key)
         db.session.commit()
-        
+
         # Return the PSK creation success page with the plaintext PSK to show once
         return render_template('admin/psk_created.html',
                              psk=plaintext_psk,
@@ -78,7 +87,7 @@ def new_psk():
                              psk_type=new_key.psk_type,
                              psk_id=new_key.id,
                              server_url=request.url_root)
-    
+
     return render_template('admin/psk_new.html', form=form)
 
 @bp.route('/psk/<int:key_id>/revoke', methods=['POST'])
@@ -178,7 +187,16 @@ def list_certificates():
     except CertTransparencyClientError as e:
         current_app.logger.error(f"Failed to fetch certificates: {e}")
         flash(f'Unable to fetch certificates: {e}', 'error')
-        return render_template('admin/certificates.html', 
+        return render_template('admin/certificates.html',
+                             certificates=[],
+                             pagination={},
+                             filters={},
+                             stats={},
+                             current_page=1)
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error in certificate listing: {e}")
+        flash('An error occurred while loading certificates', 'error')
+        return render_template('admin/certificates.html',
                              certificates=[],
                              pagination={},
                              filters={},
