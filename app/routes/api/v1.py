@@ -215,7 +215,7 @@ def server_bundle(psk_object):
             
             # Add TLS-Crypt key
             if master_tls_key is not None:
-                current_app.logger.debug(f"Adding server_tls_crypt_key: {master_tls_key is not None}, length: {len(master_tls_key) if master_tls_key else 0}")
+                current_app.logger.debug(f"Adding tls-crypt.key: length={len(master_tls_key)}")
                 tls_key_info = tarfile.TarInfo('tls-crypt.key')
                 tls_key_info.size = len(master_tls_key.encode('utf-8'))
                 tar.addfile(tls_key_info, io.BytesIO(master_tls_key.encode('utf-8')))
