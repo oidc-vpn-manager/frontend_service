@@ -50,6 +50,89 @@ def mock_oauth(monkeypatch):
     return mock_oauth_client
 
 
+class TestPKCEConfiguration:
+    """Tests verifying PKCE (RFC 7636) is correctly configured."""
+
+    def _run_init_extensions(self, monkeypatch, app_config_overrides=None):
+        """
+        Helper to call init_extensions with mocked dependencies and capture
+        the kwargs passed to oauth.register.
+
+        Returns:
+            dict: The captured kwargs from the oauth.register call.
+        """
+        import app.extensions as ext
+
+        captured_kwargs = {}
+
+        def capture_register(**kwargs):
+            """Capture the kwargs passed to oauth.register."""
+            if kwargs.get('name') == 'oidc':
+                captured_kwargs.update(kwargs)
+
+        # Replace all extensions with mocks to isolate the test
+        mock_db = MagicMock()
+        mock_db.metadata.tables = {}
+        monkeypatch.setattr(ext, 'db', mock_db)
+        monkeypatch.setattr(ext, 'migrate', MagicMock())
+        monkeypatch.setattr(ext, 'sess', MagicMock())
+        monkeypatch.setattr(ext, 'limiter', MagicMock())
+        monkeypatch.setattr(ext, 'talisman', MagicMock())
+        monkeypatch.setattr(ext, 'csrf', MagicMock())
+
+        mock_oauth = MagicMock()
+        mock_oauth.register = capture_register
+        monkeypatch.setattr(ext, 'oauth', mock_oauth)
+
+        test_app = Flask(__name__)
+        test_app.config['OIDC_DISCOVERY_URL'] = 'https://test.example.com/.well-known/openid-configuration'
+        test_app.config['OIDC_CLIENT_ID'] = 'test-client-id'
+        test_app.config['OIDC_CLIENT_SECRET'] = 'test-client-secret'
+        test_app.config['SESSION_SQLALCHEMY'] = MagicMock()
+        if app_config_overrides:
+            test_app.config.update(app_config_overrides)
+
+        with test_app.app_context():
+            ext.init_extensions(test_app)
+
+        return captured_kwargs
+
+    def test_pkce_enabled_when_oidc_require_pkce_true(self, monkeypatch):
+        """
+        Verifies that PKCE S256 is included in client_kwargs when OIDC_REQUIRE_PKCE is true.
+
+        Security: PKCE prevents authorization code interception attacks (RFC 7636).
+        When enabled, Authlib sends code_challenge in authorization requests and
+        code_verifier in token exchange requests automatically.
+        """
+        captured = self._run_init_extensions(monkeypatch, {'OIDC_REQUIRE_PKCE': True})
+
+        assert 'client_kwargs' in captured, "oauth.register must include client_kwargs"
+        assert captured['client_kwargs'].get('code_challenge_method') == 'S256', \
+            "OIDC client must use PKCE S256 when OIDC_REQUIRE_PKCE is true"
+
+    def test_pkce_disabled_when_oidc_require_pkce_false(self, monkeypatch):
+        """
+        Verifies that PKCE is not included in client_kwargs when OIDC_REQUIRE_PKCE is false
+        (the default), for backwards compatibility with providers that don't support PKCE.
+        """
+        captured = self._run_init_extensions(monkeypatch, {'OIDC_REQUIRE_PKCE': False})
+
+        assert 'client_kwargs' in captured, "oauth.register must include client_kwargs"
+        assert 'code_challenge_method' not in captured['client_kwargs'], \
+            "OIDC client must not include code_challenge_method when OIDC_REQUIRE_PKCE is false"
+
+    def test_pkce_disabled_by_default(self, monkeypatch):
+        """
+        Verifies that PKCE is off by default when OIDC_REQUIRE_PKCE is not set.
+        """
+        captured = self._run_init_extensions(monkeypatch)
+
+        assert 'client_kwargs' in captured, "oauth.register must include client_kwargs"
+        assert 'code_challenge_method' not in captured['client_kwargs'], \
+            "OIDC client must not include code_challenge_method by default"
+
+
 class TestAuthCoverage:
     """Tests to cover missing lines in auth routes."""
 

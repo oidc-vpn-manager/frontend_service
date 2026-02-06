@@ -64,6 +64,7 @@ class Config:
         self.OIDC_CLIENT_ID = loadConfigValueFromFileOrEnvironment('OIDC_CLIENT_ID', '')
         self.OIDC_CLIENT_SECRET = loadConfigValueFromFileOrEnvironment('OIDC_CLIENT_SECRET', '')
         self.OIDC_DISABLE_IDP_LOGOUT_FLOW = loadBoolConfigValue('OIDC_DISABLE_IDP_LOGOUT_FLOW', 'false')
+        self.OIDC_REQUIRE_PKCE = loadBoolConfigValue('OIDC_REQUIRE_PKCE', 'false')
 
         # Service Separation Configuration
         self.ADMIN_URL_BASE = os.environ.get('ADMIN_URL_BASE', '')

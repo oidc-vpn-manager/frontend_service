@@ -46,10 +46,15 @@ def init_extensions(app: Flask):
     
     csrf.init_app(app)
     oauth.init_app(app)
+
+    client_kwargs = {'scope': app.config.get("OIDC_SCOPES", "openid email profile groups")}
+    if app.config.get("OIDC_REQUIRE_PKCE", False):
+        client_kwargs['code_challenge_method'] = 'S256'
+
     oauth.register(
         name='oidc',
         server_metadata_url=app.config["OIDC_DISCOVERY_URL"],
         client_id=app.config["OIDC_CLIENT_ID"],
         client_secret=app.config["OIDC_CLIENT_SECRET"],
-        client_kwargs={'scope': 'openid email profile groups'}
+        client_kwargs=client_kwargs
     )

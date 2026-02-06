@@ -136,7 +136,8 @@ flask db downgrade
 ## Security Features
 
 ### Authentication & Authorization
-- OIDC integration with group-based RBAC  
+- OIDC integration with group-based RBAC
+- PKCE (RFC 7636) with S256 code challenge for authorization code flow security
 - Session management with Flask-Session
 - API authentication for service-to-service calls
 - Rate limiting on sensitive endpoints
