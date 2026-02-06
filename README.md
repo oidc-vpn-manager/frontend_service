@@ -1,4 +1,4 @@
-# Frontend Web Interface for OpenVPN-Manager
+# Frontend Web Interface for oidc-vpn-manager
 
 This Python-Flask based service is designed to offer a user-facing frontend to consumers and administrators of a managed OpenVPN service. The service provides the following key features:
 
@@ -6,12 +6,12 @@ This Python-Flask based service is designed to offer a user-facing frontend to c
 2. A Web Portal or API access which will allow a user to request and then receive a complete OpenVPN profile with a unique certificate for the user. This request must be authenticated with OIDC before permitting the request and subsequent profile file.
 3. A Web Portal to allow administrators to setup a "Pre-Shared Key" for server devices to request OpenVPN profile and certificate files.
 4. A REST API, authenticated with the Pre-Shared Key, to request and then receive a tar-format archive file with server configuration and separate Root and Intermediate CA Certificate, plus server certificate and key.
-5. Hand-off to a separate [Signing microservice](https://github.com/openvpn-manager/signing_service), ensuring key materials only transit the server and are never retained.
-6. Hand-off to the [Certificate Transparency log microservice](https://github.com/openvpn-manager/certtransparency_service) to see issued certificate details.
+5. Hand-off to a separate [Signing microservice](https://github.com/oidc-vpn-manager/signing_service), ensuring key materials only transit the server and are never retained.
+6. Hand-off to the [Certificate Transparency log microservice](https://github.com/oidc-vpn-manager/certtransparency_service) to see issued certificate details.
 
 ## Folder structure
 
-The application resides in the `app` directory. The test-suite lives in `tests` for unit, functional and integration tests. A separate "smoke" (or end-to-end) test suite lives in the separate [testing repository](https://github.com/openvpn-manager/end-to-end-tests).
+The application resides in the `app` directory. The test-suite lives in `tests` for unit, functional and integration tests. A separate "smoke" (or end-to-end) test suite lives in the separate [testing repository](https://github.com/oidc-vpn-manager/end-to-end-tests).
 
 ## Contributing
 

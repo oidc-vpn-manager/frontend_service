@@ -83,7 +83,7 @@ class TestSecurityEventLoggerUnit:
             assert event["severity"] == "medium"
             assert event["success"] is True
             assert event["message"] == "Test message"
-            assert event["service"] == "openvpn-manager-frontend"
+            assert event["service"] == "oidc-vpn-manager-frontend"
             assert event["version"] == "1.0"
             assert "timestamp" in event
             assert event["additional_data"]["test_key"] == "test_value"
@@ -245,7 +245,7 @@ class TestJSONFormatterUnit:
         assert log_data['level'] == 'INFO'
         assert log_data['logger'] == 'test_logger'
         assert log_data['message'] == 'Test message'
-        assert log_data['service'] == 'openvpn-manager-frontend'
+        assert log_data['service'] == 'oidc-vpn-manager-frontend'
         assert log_data['version'] == '1.0'
         assert 'timestamp' in log_data
         assert 'process_id' in log_data

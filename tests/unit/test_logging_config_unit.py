@@ -40,7 +40,7 @@ class TestJSONFormatterEdgeCases:
         # Basic structure should still be present
         assert log_data['level'] == 'INFO'
         assert log_data['message'] == 'Test message outside request context'
-        assert log_data['service'] == 'openvpn-manager-frontend'
+        assert log_data['service'] == 'oidc-vpn-manager-frontend'
         # Request context fields should not be present
         assert 'request_context' not in log_data
 

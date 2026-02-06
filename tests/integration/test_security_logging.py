@@ -207,7 +207,7 @@ class TestJSONFormatter:
         assert log_data['level'] == 'INFO'
         assert log_data['logger'] == 'test'
         assert log_data['message'] == 'Test message'
-        assert log_data['service'] == 'openvpn-manager-frontend'
+        assert log_data['service'] == 'oidc-vpn-manager-frontend'
         assert log_data['version'] == '1.0'
         assert 'timestamp' in log_data
 

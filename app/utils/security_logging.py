@@ -101,7 +101,7 @@ class SecurityEventLogger:
             'severity': severity,
             'success': success,
             'message': message,
-            'service': 'openvpn-manager-frontend',
+            'service': 'oidc-vpn-manager-frontend',
             'version': '1.0',
         }
 
