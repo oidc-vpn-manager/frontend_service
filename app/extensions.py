@@ -28,7 +28,7 @@ def init_extensions(app: Flask):
     # Configure Talisman security headers
     # Only force HTTPS when explicitly configured for production deployment
     # (not just when ENVIRONMENT='production' since tests also use that)
-    force_https = app.config.get('FORCE_HTTPS', False)
+    force_https = app.config.get('FORCE_HTTPS', True)
     content_security_policy = {
         'default-src': "'self'",
         'script-src': "'self'",
@@ -42,7 +42,7 @@ def init_extensions(app: Flask):
         'base-uri': "'self'",
         'form-action': "'self'"
     }
-    talisman.init_app(app, force_https=force_https, content_security_policy=content_security_policy)
+    talisman.init_app(app, force_https=force_https, session_cookie_secure=force_https, content_security_policy=content_security_policy)
     
     csrf.init_app(app)
     oauth.init_app(app)

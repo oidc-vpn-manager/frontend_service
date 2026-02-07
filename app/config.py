@@ -50,6 +50,9 @@ class Config:
         self.SQLALCHEMY_DATABASE_URI = loadConfigValueFromFileOrEnvironment('DATABASE_URL', self.SQLALCHEMY_DATABASE_URI)
         self.SQLALCHEMY_TRACK_MODIFICATIONS = loadBoolConfigValue('TRACK_MODIFICATIONS', 'false')
 
+        # HTTPS / TLS
+        self.FORCE_HTTPS = loadBoolConfigValue('FORCE_HTTPS', 'true')
+
         # Session settings
         self.SESSION_TYPE = 'sqlalchemy'
         self.SESSION_PERMANENT = True
