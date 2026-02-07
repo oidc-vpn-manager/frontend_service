@@ -1,5 +1,5 @@
 """
-Input validation utilities for OpenVPN Manager Frontend.
+Input validation utilities for OIDC VPN Manager Frontend.
 
 This module provides comprehensive input validation to prevent injection attacks,
 oversized payloads, and malformed data from entering the application.

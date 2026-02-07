@@ -4,7 +4,7 @@
 
 {% block content %}
     <h1>Administrate Issued Certificates</h1>
-    <p>View and manage all certificates issued by the OpenVPN Manager system for audit and compliance purposes.</p>
+    <p>View and manage all certificates issued by the OIDC VPN Manager system for audit and compliance purposes.</p>
 
     {% if request.args.get('bulk_revoked') %}
     <div class="alert alert-success">Successfully revoked {{ request.args.get('bulk_revoked') }} certificates for user {{ request.args.get('user_id') }}</div>

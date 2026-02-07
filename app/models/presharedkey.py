@@ -1,5 +1,5 @@
 """
-Pre-shared key (PSK) model for OpenVPN Manager certificate authentication.
+Pre-shared key (PSK) model for OIDC VPN Manager certificate authentication.
 
 This module provides secure storage and management of pre-shared keys used for
 authenticating requests to certificate generation endpoints. PSKs enable secure

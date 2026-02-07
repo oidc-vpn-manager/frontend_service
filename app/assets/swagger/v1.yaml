@@ -1,9 +1,9 @@
 openapi: 3.0.0
 info:
-  title: OpenVPN Manager Frontend API
+  title: OIDC VPN Manager Frontend API
   version: "1.0.0"
   description: |
-    REST API for OpenVPN Manager device and server authentication.
+    REST API for OIDC VPN Manager device and server authentication.
     
     This API provides PSK-authenticated endpoints for:
     - Server configuration bundle retrieval for automated deployment (admin service only)

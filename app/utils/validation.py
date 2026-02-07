@@ -1,5 +1,5 @@
 """
-Input validation utilities for the OpenVPN Manager frontend.
+Input validation utilities for the OIDC VPN Manager frontend.
 """
 
 def is_valid_certificate_fingerprint(fingerprint: str) -> bool:

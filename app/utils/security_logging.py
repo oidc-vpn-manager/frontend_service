@@ -457,7 +457,7 @@ class SecurityEventLogger:
             action="system_startup",
             severity=self.LOW,
             success=True,
-            message=f"OpenVPN Manager frontend started (version {version})",
+            message=f"OIDC VPN Manager frontend started (version {version})",
             additional_data={
                 'version': version,
                 'config': config_details

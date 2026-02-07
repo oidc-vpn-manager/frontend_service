@@ -1,5 +1,5 @@
 """
-Cryptographic utilities for secure data encryption in OpenVPN Manager.
+Cryptographic utilities for secure data encryption in OIDC VPN Manager.
 
 This module provides Fernet-based symmetric encryption for sensitive data
 stored in the database, such as encrypted model fields. It includes security

@@ -1,10 +1,10 @@
 # Frontend Service
 
-This file provides LLMs with guidance for working with the Frontend Service component of OpenVPN Manager.
+This file provides LLMs with guidance for working with the Frontend Service component of OIDC VPN Manager.
 
 ## Service Overview
 
-The Frontend Service is the main web UI and API gateway for OpenVPN Manager, running on ports 8450/8540/8600. It handles user authentication, certificate management, and orchestrates communication between the signing and certificate transparency services.
+The Frontend Service is the main web UI and API gateway for OIDC VPN Manager, running on ports 8450/8540/8600. It handles user authentication, certificate management, and orchestrates communication between the signing and certificate transparency services.
 
 ## Architecture
 

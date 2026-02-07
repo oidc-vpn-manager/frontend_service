@@ -1,5 +1,5 @@
 """
-Logging Configuration for OpenVPN Manager Frontend
+Logging Configuration for OIDC VPN Manager Frontend
 
 This module configures structured JSON logging for the application, with separate
 loggers for security events, application events, and access logs. All logs are

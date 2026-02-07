@@ -5,11 +5,11 @@
 {% block content %}
     <h1>Certificate Transparency Log</h1>
     {% if user_role == 'auditor' %}
-        <p>Audit view of all certificates issued by the OpenVPN Manager system for compliance and transparency purposes.</p>
+        <p>Audit view of all certificates issued by the OIDC VPN Manager system for compliance and transparency purposes.</p>
     {% elif user_role == 'system_admin' %}
-        <p>System Administrator view of all certificates issued by the OpenVPN Manager system.</p>
+        <p>System Administrator view of all certificates issued by the OIDC VPN Manager system.</p>
     {% else %}
-        <p>Administrative view of all certificates issued by the OpenVPN Manager system.</p>
+        <p>Administrative view of all certificates issued by the OIDC VPN Manager system.</p>
     {% endif %}
 
     {% if error_message %}
