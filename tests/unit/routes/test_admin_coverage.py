@@ -781,3 +781,114 @@ def test_revoke_psk_not_found(app):
         
         # Should return 404 for non-existent PSK
         assert response.status_code == 404
+
+
+@patch('app.routes.admin.render_template')
+def test_create_psk_malformed_form_data_raises_value_error(mock_render_template, app):
+    """
+    Test PSK creation when form validation raises ValueError from malformed input (lines 50-54).
+
+    Simulates a scenario where malicious or corrupted form data causes validate_on_submit()
+    to raise a ValueError, testing the graceful error handling path.
+    """
+    mock_render_template.return_value = 'Mocked PSK Form Page'
+
+    with patch('app.utils.server_templates.get_template_set_choices') as mock_template_choices:
+        mock_template_choices.return_value = [('default', 'Default Template Set')]
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess['user'] = {
+                    'sub': 'test_admin',
+                    'email': 'admin@example.org',
+                    'groups': ['admins']
+                }
+
+            # Mock form.validate_on_submit to raise ValueError
+            with patch('app.routes.admin.NewPskForm') as mock_form_cls:
+                mock_form = Mock()
+                mock_form_cls.return_value = mock_form
+                mock_form.template_set = Mock()
+                mock_form.validate_on_submit.side_effect = ValueError("Malformed form data")
+
+                response = client.post('/admin/psk/new', data={
+                    'description': 'Test',
+                    'template_set': 'default'
+                })
+
+                assert response.status_code == 200
+                assert b'Mocked PSK Form Page' in response.data
+                mock_render_template.assert_called_once()
+                assert mock_render_template.call_args[0][0] == 'admin/psk_new.html'
+
+
+@patch('app.routes.admin.render_template')
+def test_create_psk_malformed_form_data_raises_key_error(mock_render_template, app):
+    """
+    Test PSK creation when form validation raises KeyError from injected fields (lines 50-54).
+
+    Simulates prototype pollution or constructor injection attacks where field names like
+    __proto__ or constructor cause KeyError during form processing.
+    """
+    mock_render_template.return_value = 'Mocked PSK Form Page'
+
+    with patch('app.utils.server_templates.get_template_set_choices') as mock_template_choices:
+        mock_template_choices.return_value = [('default', 'Default Template Set')]
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess['user'] = {
+                    'sub': 'test_admin',
+                    'email': 'admin@example.org',
+                    'groups': ['admins']
+                }
+
+            with patch('app.routes.admin.NewPskForm') as mock_form_cls:
+                mock_form = Mock()
+                mock_form_cls.return_value = mock_form
+                mock_form.template_set = Mock()
+                mock_form.validate_on_submit.side_effect = KeyError("__proto__")
+
+                response = client.post('/admin/psk/new', data={
+                    'description': 'Test',
+                    'template_set': 'default'
+                })
+
+                assert response.status_code == 200
+                assert b'Mocked PSK Form Page' in response.data
+
+
+@patch('app.routes.admin.render_template')
+def test_list_certificates_unexpected_exception(mock_render_template, app):
+    """
+    Test list_certificates with an unexpected non-CT exception (lines 196-199).
+
+    Simulates an unexpected error (e.g., database connection failure, serialization error)
+    that is not a CertTransparencyClientError, triggering the generic exception handler.
+    """
+    mock_render_template.return_value = 'Mocked Certificates Error Page'
+
+    with patch('app.routes.admin.get_certtransparency_client') as mock_get_client:
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        # Raise a generic RuntimeError (not CertTransparencyClientError)
+        mock_client.list_certificates.side_effect = RuntimeError("Database connection pool exhausted")
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess['user'] = {
+                    'sub': 'test_admin',
+                    'email': 'admin@example.org',
+                    'groups': ['admins']
+                }
+
+            response = client.get('/admin/certificates')
+
+            assert response.status_code == 200
+            assert b'Mocked Certificates Error Page' in response.data
+            mock_render_template.assert_called_once()
+            call_args = mock_render_template.call_args
+            assert call_args[0][0] == 'admin/certificates.html'
+            # Verify empty state is passed
+            assert call_args[1]['certificates'] == []
+            assert call_args[1]['current_page'] == 1
