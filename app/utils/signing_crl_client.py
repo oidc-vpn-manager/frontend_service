@@ -42,7 +42,11 @@ class SigningCRLClient:
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self.api_secret}'
         })
-        
+        from app.utils.environment import loadBoolConfigValue
+        tls_validate = loadBoolConfigValue('SIGNING_SERVICE_URL_TLS_VALIDATE', 'true')
+        if self.base_url.startswith('https://') and not tls_validate:
+            self.session.verify = False
+
     def generate_crl(self, revoked_certificates: List[Dict[str, Any]], next_update_hours: int = 24) -> bytes:
         """
         Generate a CRL by sending revoked certificate data to the signing service.

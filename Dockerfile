@@ -29,6 +29,7 @@ RUN pip install --break-system-packages --no-cache --ignore-installed packaging 
 COPY migrations/ ./migrations/
 COPY app/ ./app
 COPY wsgi.py .
+COPY entrypoint.py .
 COPY --chmod=0755 run_migrate.sh .
 
 RUN chown -R appuser:appgroup /usr/src/app
@@ -42,4 +43,4 @@ ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:8600 --workers=3 --access-logfile - --erro
 ENV ENVIRONMENT="production"
 ENV FLASK_APP="wsgi:application"
 
-CMD [ "bash", "-c", "gunicorn --log-level $GUNICORN_LOG_LEVEL $FLASK_APP $GUNICORN_CMD_ARGS" ]
+CMD ["python3", "entrypoint.py"]

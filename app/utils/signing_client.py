@@ -45,14 +45,17 @@ def request_signed_certificate(csr_pem: str, user_id: str = None, certificate_ty
     if not service_url or not api_secret:
         raise SigningServiceError("Signing service is not configured.")
 
+    tls_validate = current_app.config.get('SIGNING_SERVICE_URL_TLS_VALIDATE', True)
+    verify = tls_validate if service_url.startswith('https://') else True
+
     endpoint_url = f"{service_url}/api/v1/sign-csr"
     headers = {'Authorization': f'Bearer {api_secret}'}
     payload = {'csr': csr_pem, 'certificate_type': certificate_type}
-    
+
     # Include user_id in payload if provided and not empty
     if user_id and user_id.strip():
         payload['user_id'] = user_id
-    
+
     # Include client_ip in payload if provided and not empty
     if client_ip and client_ip.strip():
         payload['client_ip'] = client_ip
@@ -67,7 +70,8 @@ def request_signed_certificate(csr_pem: str, user_id: str = None, certificate_ty
             endpoint_url,
             headers=headers,
             json=payload,
-            timeout=5 # Set a reasonable timeout
+            timeout=5, # Set a reasonable timeout
+            verify=verify
         )
         # Raise an exception for HTTP error statuses (4xx or 5xx)
         response.raise_for_status()
@@ -111,10 +115,13 @@ def request_certificate_revocation(fingerprint: str, reason: str, revoked_by: st
     # 1. Get configuration
     service_url = current_app.config.get('SIGNING_SERVICE_URL')
     api_secret = current_app.config.get('SIGNING_SERVICE_API_SECRET')
-    
+
     if not service_url or not api_secret:
         raise SigningServiceError("Signing service is not configured.")
-    
+
+    tls_validate = current_app.config.get('SIGNING_SERVICE_URL_TLS_VALIDATE', True)
+    verify = tls_validate if service_url.startswith('https://') else True
+
     endpoint_url = f"{service_url}/api/v1/revoke-certificate"
     headers = {'Authorization': f'Bearer {api_secret}'}
     payload = {
@@ -122,14 +129,15 @@ def request_certificate_revocation(fingerprint: str, reason: str, revoked_by: st
         'reason': reason,
         'revoked_by': revoked_by
     }
-    
+
     try:
         # 2. Make the request
         response = requests.post(
             endpoint_url,
             headers=headers,
             json=payload,
-            timeout=10  # Revocation might take longer than signing
+            timeout=10,  # Revocation might take longer than signing
+            verify=verify
         )
         
         # 3. Handle response
@@ -184,10 +192,13 @@ def request_bulk_certificate_revocation(user_id: str, reason: str, revoked_by: s
     # 1. Get configuration
     service_url = current_app.config.get('SIGNING_SERVICE_URL')
     api_secret = current_app.config.get('SIGNING_SERVICE_API_SECRET')
-    
+
     if not service_url or not api_secret:
         raise SigningServiceError("Signing service is not configured.")
-    
+
+    tls_validate = current_app.config.get('SIGNING_SERVICE_URL_TLS_VALIDATE', True)
+    verify = tls_validate if service_url.startswith('https://') else True
+
     endpoint_url = f"{service_url}/api/v1/bulk-revoke-user-certificates"
     headers = {'Authorization': f'Bearer {api_secret}'}
     payload = {
@@ -195,14 +206,15 @@ def request_bulk_certificate_revocation(user_id: str, reason: str, revoked_by: s
         'reason': reason,
         'revoked_by': revoked_by
     }
-    
+
     try:
         # 2. Make the request
         response = requests.post(
             endpoint_url,
             headers=headers,
             json=payload,
-            timeout=30  # Bulk operations might take longer
+            timeout=30,  # Bulk operations might take longer
+            verify=verify
         )
         
         # 3. Handle response

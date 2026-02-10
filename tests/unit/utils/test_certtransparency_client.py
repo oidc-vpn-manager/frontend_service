@@ -54,7 +54,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/test',
             params={'param': 'value'},
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
     @patch('app.utils.certtransparency_client.requests.get')
@@ -100,7 +101,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/certificates',
             params=expected_params,
-            timeout=30
+            timeout=30,
+            verify=True
         )
         assert result == {'certificates': []}
 
@@ -119,7 +121,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/certificates/abc123',
             params={'include_pem': 'false'},
-            timeout=30
+            timeout=30,
+            verify=True
         )
         assert result == {'certificate': {'subject': 'test'}}
 
@@ -138,7 +141,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/certificates/serial/123456',
             params={'include_pem': 'true'},
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
     @patch('app.utils.certtransparency_client.requests.get')
@@ -156,7 +160,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/certificates/subject/test@example.com',
             params={'include_pem': 'false', 'include_revoked': 'true'},
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
     @patch('app.utils.certtransparency_client.requests.get')
@@ -174,7 +179,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/statistics',
             params=None,
-            timeout=30
+            timeout=30,
+            verify=True
         )
         assert result == {'total': 100}
 
@@ -199,7 +205,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/search',
             params=expected_params,
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
     def test_get_certtransparency_client(self, app):
@@ -253,7 +260,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/certificates',
             params=expected_params,
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
     @patch('app.utils.certtransparency_client.requests.get')
@@ -271,7 +279,8 @@ class TestCertTransparencyClient:
         mock_get.assert_called_once_with(
             'http://certtransparency:8400/statistics',
             params=None,
-            timeout=120
+            timeout=120,
+            verify=True
         )
 
     @patch('app.utils.certtransparency_client.requests.get')
@@ -326,7 +335,8 @@ class TestCertTransparencyClient:
                 'include_revocation_details': 'true',
                 'limit': 10000
             },
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
     @patch('app.utils.certtransparency_client.requests.get')
@@ -362,7 +372,8 @@ class TestCertTransparencyClient:
                 'reason': 'key_compromise',
                 'revoked_by': 'admin'
             },
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
     @patch('app.utils.certtransparency_client.requests.post')
@@ -408,7 +419,8 @@ class TestCertTransparencyClient:
                 'reason': 'user_terminated',
                 'revoked_by': 'admin'
             },
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
     @patch('app.utils.certtransparency_client.requests.post')
@@ -445,7 +457,8 @@ class TestCertTransparencyClient:
                     'reason': 'device_compromise',
                     'revoked_by': 'admin'
                 },
-                timeout=30
+                timeout=30,
+                verify=True
             )
 
     @patch('app.utils.certtransparency_client.requests.post')
@@ -482,7 +495,8 @@ class TestCertTransparencyClient:
                     'reason': 'ca_compromise',
                     'revoked_by': 'system'
                 },
-                timeout=30
+                timeout=30,
+                verify=True
             )
 
     @patch('app.utils.certtransparency_client.requests.post')
@@ -525,7 +539,8 @@ class TestCertTransparencyClient:
                     'limit': 10000,
                     'active_only': 'true'
                 },
-                timeout=30
+                timeout=30,
+                verify=True
             )
 
     @patch('app.utils.certtransparency_client.requests.get')
@@ -555,7 +570,8 @@ class TestCertTransparencyClient:
                     'subject': 'computer-test-*',
                     'revoked_only': 'true'
                 },
-                timeout=30
+                timeout=30,
+                verify=True
             )
 
 
@@ -590,7 +606,8 @@ class TestCerttransparencyClientCoverageGaps:
                 'limit': 10000,
                 'revoked_only': 'true'  # This tests the elif branch
             },
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
         assert result == {'certificates': []}
@@ -622,7 +639,8 @@ class TestCerttransparencyClientCoverageGaps:
                 'limit': 10000,
                 'revoked_only': 'true'  # This tests the elif branch
             },
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
         assert result == {'certificates': []}
@@ -654,7 +672,8 @@ class TestCerttransparencyClientCoverageGaps:
                 "limit": 10000,
                 "active_only": "true"  # This tests line 519
             },
-            timeout=30
+            timeout=30,
+            verify=True
         )
 
         assert result == {"certificates": []}

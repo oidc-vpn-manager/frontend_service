@@ -102,6 +102,10 @@ class Config:
         # Certificate Transparency Service
         self.CERTTRANSPARENCY_SERVICE_URL = os.environ.get('CERTTRANSPARENCY_SERVICE_URL', 'http://certtransparency:8400')
 
+        # Inter-service TLS validation
+        self.SIGNING_SERVICE_URL_TLS_VALIDATE = loadBoolConfigValue('SIGNING_SERVICE_URL_TLS_VALIDATE', 'true')
+        self.CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE = loadBoolConfigValue('CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE', 'true')
+
         # Templates and Options for Templates
         self.TEMPLATE_COLLECTION = None
         self.OVPN_TEMPLATE_PATH = os.environ.get('OVPN_TEMPLATE_PATH', './openvpn_templates')

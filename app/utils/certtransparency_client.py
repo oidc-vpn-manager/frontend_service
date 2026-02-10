@@ -38,7 +38,10 @@ class CertTransparencyClient:
             'http://certtransparency:8400'
         )
         self.timeout = timeout
-        
+        from app.utils.environment import loadBoolConfigValue
+        tls_validate = loadBoolConfigValue('CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE', 'true')
+        self.tls_verify = tls_validate if self.base_url.startswith('https://') else True
+
     def _make_request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Make a GET request to the Certificate Transparency service.
@@ -65,7 +68,7 @@ class CertTransparencyClient:
         url = f"{self.base_url}/{endpoint}"
         
         try:
-            response = requests.get(url, params=params, timeout=self.timeout)
+            response = requests.get(url, params=params, timeout=self.timeout, verify=self.tls_verify)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -317,7 +320,7 @@ class CertTransparencyClient:
         }
         
         try:
-            response = requests.post(url, json=data, timeout=self.timeout)
+            response = requests.post(url, json=data, timeout=self.timeout, verify=self.tls_verify)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -356,7 +359,7 @@ class CertTransparencyClient:
         }
 
         try:
-            response = requests.post(url, json=data, timeout=self.timeout)
+            response = requests.post(url, json=data, timeout=self.timeout, verify=self.tls_verify)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -396,7 +399,7 @@ class CertTransparencyClient:
         }
 
         try:
-            response = requests.post(url, json=data, timeout=self.timeout)
+            response = requests.post(url, json=data, timeout=self.timeout, verify=self.tls_verify)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -436,7 +439,7 @@ class CertTransparencyClient:
         }
 
         try:
-            response = requests.post(url, json=data, timeout=self.timeout)
+            response = requests.post(url, json=data, timeout=self.timeout, verify=self.tls_verify)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:

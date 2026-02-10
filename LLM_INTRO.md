@@ -24,6 +24,7 @@ The Frontend Service is the main web UI and API gateway for OIDC VPN Manager, ru
     - `types/` - Custom SQLAlchemy types (encrypted fields)
   - `utils/` - Utility modules
     - `decorators.py` - Custom decorators for authentication/authorization
+    - `tls_setup.py` - Application-level TLS configuration and snakeoil cert generation
   - `templates/` - Jinja2 HTML templates
   - `static/` - Static assets (CSS, JS, images)
 
@@ -127,6 +128,29 @@ flask db downgrade
 - `CERTTRANSPARENCY_SERVICE_URL` - CT service endpoint
 - `*_API_SECRET_FILE` - API secret file paths for service communication
 
+### Application-Level TLS
+
+The service supports in-built TLS at the Gunicorn level, configured via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_APPLICATION_TLS` | `true` | Enable/disable TLS on the Gunicorn server |
+| `APPLICATION_TLS_CERT` | `/app/tls/application.crt` | Path to TLS certificate |
+| `APPLICATION_TLS_KEY` | `/app/tls/application.key` | Path to TLS private key |
+| `APPLICATION_CA_CERT` | (empty) | Optional CA certificate for chain serving |
+| `APPLICATION_TLS_CN` | container hostname | Common name for snakeoil cert |
+| `APPLICATION_TLS_SAN` | container hostname | Comma-separated SANs for snakeoil cert |
+| `SIGNING_SERVICE_URL_TLS_VALIDATE` | `true` | Validate TLS for signing service calls |
+| `CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE` | `true` | Validate TLS for CT service calls |
+
+**Snakeoil Certificates**: If `ENABLE_APPLICATION_TLS` is enabled but the cert/key files don't exist at the configured paths, the service auto-generates a self-signed EC P-256 certificate on startup. This requires writable paths at the cert/key locations (handled by emptyDir volume mount in Kubernetes).
+
+**Chain Serving**: When `APPLICATION_CA_CERT` is set and the file exists, the server cert and CA cert are concatenated into a chain file at `/tmp/tls/chain.crt`, which is passed to Gunicorn's `--certfile`. This allows clients to validate the full certificate chain.
+
+**Client TLS Verification**: When inter-service URLs use `https://`, the `*_TLS_VALIDATE` settings control whether the service verifies the remote server's TLS certificate. Set to `false` when using self-signed certificates between services.
+
+**Startup**: The service uses `entrypoint.py` which calls `configure_tls_for_gunicorn()` from `app/utils/tls_setup.py`, then execs Gunicorn with appropriate `--certfile`/`--keyfile` arguments.
+
 ### Service Integration
 - Authenticates with signing service using shared secrets
 - Logs all certificate operations to CT service
@@ -198,6 +222,7 @@ flask db downgrade
 - `tests/` - Comprehensive test suite
 - `wsgi.py` - WSGI application entry point
 - `run_migrate.sh` - Database migration helper
+- `entrypoint.py` - Python entrypoint for TLS-aware Gunicorn startup
 - `Dockerfile` - Container build configuration
 - `.coveragerc` - Coverage configuration
 - `pytest.ini` - Test runner configuration
