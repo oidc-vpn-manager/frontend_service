@@ -6,143 +6,71 @@ supporting both v1 (static keys) and v2 (per-client keys) formats.
 
 Key functionality:
 - process_tls_crypt_key(): Detects key version and generates appropriate client keys
-- TLSCryptV2Key: Handles v2 server master key to client key derivation using AES-CTR
+- _generate_v2_client_key(): Delegates to the openvpn binary for v2 key generation
 
 Supported key formats:
 - V1 static keys: "-----BEGIN OpenVPN Static key V1-----"
-- V2 server keys (standard OpenVPN format): "-----BEGIN OpenVPN tls-crypt-v2 server key-----"
-- V2 server keys (legacy hex format): "-----BEGIN OpenVPN TLS Crypt V2 Server Key-----"
+- V2 server keys: "-----BEGIN OpenVPN tls-crypt-v2 server key-----"
 """
 from flask import current_app
 from app.utils.tracing import trace
-import base64
 import os
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.hmac import HMAC
-from cryptography.hazmat.primitives.hashes import SHA256
-from cryptography.hazmat.backends import default_backend
+import subprocess
+import tempfile
 
-class TLSCryptV2Key:
+
+def _generate_v2_client_key(server_key_pem: str) -> str:
     """
-    A helper class for handling OpenVPN TLS-Crypt-V2 server master keys.
+    Generates a tls-crypt-v2 client key using the openvpn binary.
 
-    OpenVPN tls-crypt v2 uses a server master key to derive unique per-client
-    keys, providing better security than v1 shared static keys. Each client
-    receives a cryptographically unique key derived from the master.
-
-    Security considerations:
-    - Master key must be exactly 128 bytes (512 bits)
-    - Client keys are derived using AES-256-CTR with random IVs
-    - Each client key is unique and cannot be derived from other client keys
-    - Compromise of one client key does not affect other clients
+    Delegates key generation to the reference OpenVPN implementation,
+    ensuring full format compatibility with OpenVPN clients and servers.
 
     Args:
-        key_data (bytes): 128-byte server master key
-
-    Raises:
-        ValueError: If key_data is not exactly 128 bytes
-
-    Example:
-        >>> key_data = bytes.fromhex('a1a2a3a4...')  # 256 hex chars = 128 bytes
-        >>> server_key = TLSCryptV2Key(key_data)
-        >>> client_key = server_key.generate_client_key()
-    """
-    def __init__(self, key_data):
-        trace(
-            current_app,
-            'utils.openvpn_helpers.TLSCryptV2Key.__init__',
-            {
-                'self': 'SELF',
-                'key_data': key_data
-            }
-        )
-        if len(key_data) != 128:
-            raise ValueError("TLS-Crypt-V2 key must be 128 bytes.")
-        self.master_key = key_data[:64]
-        self.hmac_key = key_data[64:]
-
-    def generate_client_key(self):
-        """
-        Generates a unique tls-crypt-v2 client key from the server master key.
-
-        Produces a client key in the format expected by OpenVPN: the raw client
-        key material followed by a wrapped (encrypted + authenticated) copy that
-        the server can unwrap to verify the client.
-
-        The output structure (560 bytes total):
-        - Raw client key: 256 bytes (2 x 128-byte OpenVPN key structs)
-        - Wrapped key:
-          - HMAC-SHA256 tag: 32 bytes (over IV + ciphertext)
-          - IV: 16 bytes (random AES-CTR nonce)
-          - Ciphertext: 256 bytes (AES-256-CTR encrypted client key)
-
-        Returns:
-            bytes: 560-byte client key data
-
-        Security considerations:
-        - Uses os.urandom() for cryptographically secure key and IV generation
-        - AES-256-CTR encrypts the client key for confidentiality
-        - HMAC-SHA256 authenticates the wrapped key (encrypt-then-MAC)
-        - Each client key is unique and cannot be derived from other client keys
-
-        Example:
-            >>> server_key = TLSCryptV2Key(master_key_data)
-            >>> client_key_1 = server_key.generate_client_key()
-            >>> client_key_2 = server_key.generate_client_key()
-            >>> assert len(client_key_1) == 560
-            >>> assert client_key_1 != client_key_2  # Each key is unique
-        """
-        trace(
-            current_app,
-            'utils.openvpn_helpers.TLSCryptV2Key.generate_client_key',
-            {
-                'self': 'SELF'
-            }
-        )
-        # Generate random 256-byte client key (2 x 128-byte OpenVPN key structs)
-        client_key_raw = os.urandom(256)
-
-        # Encrypt client key with server's encrypt key using AES-256-CTR
-        iv = os.urandom(16)
-        cipher = Cipher(algorithms.AES(self.master_key[:32]), modes.CTR(iv), backend=default_backend())
-        encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(client_key_raw) + encryptor.finalize()
-
-        # HMAC-SHA256 over (IV + ciphertext) using server's HMAC key
-        h = HMAC(self.hmac_key, SHA256(), backend=default_backend())
-        h.update(iv + ciphertext)
-        tag = h.finalize()
-
-        # Wrapped key: HMAC(32) + IV(16) + ciphertext(256)
-        wrapped_key = tag + iv + ciphertext
-
-        # Client key file contains: raw key + wrapped key
-        return client_key_raw + wrapped_key
-
-def _decode_key_data(key_data: str) -> bytes:
-    """
-    Decodes key data that may be hex-encoded or base64-encoded.
-
-    Tries hex decoding first (legacy format), then falls back to base64
-    (standard OpenVPN format).
-
-    Args:
-        key_data: The raw key data string (hex or base64 encoded)
+        server_key_pem: PEM-formatted tls-crypt-v2 server key
 
     Returns:
-        bytes: The decoded key bytes
+        str: PEM-formatted tls-crypt-v2 client key
 
     Raises:
-        ValueError: If the data cannot be decoded as either hex or base64
+        ValueError: If openvpn key generation fails (bad key, binary missing, etc.)
+
+    Security considerations:
+    - Each call produces a cryptographically unique client key
+    - Key generation is performed by the reference OpenVPN implementation
+    - Temporary files are created in a secure temporary directory and cleaned up
     """
-    try:
-        return bytes.fromhex(key_data)
-    except ValueError:
-        pass
-    try:
-        return base64.b64decode(key_data)
-    except Exception:
-        raise ValueError("Key data is neither valid hex nor valid base64.")
+    trace(
+        current_app,
+        'utils.openvpn_helpers._generate_v2_client_key',
+        {
+            'server_key_pem': '[REDACTED]'
+        }
+    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        server_key_path = os.path.join(tmpdir, 'server.key')
+        client_key_path = os.path.join(tmpdir, 'client.key')
+
+        with open(server_key_path, 'w') as f:
+            f.write(server_key_pem)
+
+        result = subprocess.run(
+            [
+                'openvpn',
+                '--tls-crypt-v2', server_key_path,
+                '--genkey', 'tls-crypt-v2-client', client_key_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise ValueError(
+                f"openvpn tls-crypt-v2 client key generation failed: {result.stderr.strip()}"
+            )
+
+        with open(client_key_path, 'r') as f:
+            return f.read()
 
 
 def process_tls_crypt_key(master_key_pem: str):
@@ -154,14 +82,13 @@ def process_tls_crypt_key(master_key_pem: str):
     accordingly:
 
     - V1: Returns the static key unchanged (shared among all clients)
-    - V2: Generates a unique client key from the server master key
+    - V2: Generates a unique client key via the openvpn binary
     - None: Returns (None, None) for graceful handling of missing keys
 
     Args:
         master_key_pem (str): PEM-formatted tls-crypt key with appropriate header:
             - V1: "-----BEGIN OpenVPN Static key V1-----"
-            - V2 (standard): "-----BEGIN OpenVPN tls-crypt-v2 server key-----"
-            - V2 (legacy): "-----BEGIN OpenVPN TLS Crypt V2 Server Key-----"
+            - V2: "-----BEGIN OpenVPN tls-crypt-v2 server key-----"
 
     Returns:
         tuple: (version, client_key_pem) where:
@@ -169,14 +96,13 @@ def process_tls_crypt_key(master_key_pem: str):
             - client_key_pem (str|None): PEM-formatted client key or None
 
     Raises:
-        ValueError: If the key format is unrecognized or malformed
-        ValueError: If v2 key is not exactly 128 bytes
+        ValueError: If the key format is unrecognized or openvpn fails
 
     Security considerations:
     - V1 keys provide TLS channel encryption but are shared (less secure)
     - V2 keys provide per-client isolation (recommended for production)
     - Both versions prevent DoS attacks via HMAC before TLS handshake
-    - Version detection prevents downgrade attacks
+    - V2 key generation uses the reference OpenVPN implementation
 
     Example:
         >>> v1_key = "-----BEGIN OpenVPN Static key V1-----\\n...\\n-----END..."
@@ -184,10 +110,10 @@ def process_tls_crypt_key(master_key_pem: str):
         >>> assert version == 1
         >>> assert client_key == v1_key  # V1 returns unchanged
 
-        >>> v2_key = "-----BEGIN OpenVPN TLS Crypt V2 Server Key-----\\n...\\n-----END..."
+        >>> v2_key = "-----BEGIN OpenVPN tls-crypt-v2 server key-----\\n...\\n-----END..."
         >>> version, client_key = process_tls_crypt_key(v2_key)
         >>> assert version == 2
-        >>> assert "Client Key" in client_key  # V2 generates new key
+        >>> assert "tls-crypt-v2 client key" in client_key
     """
     trace(
         current_app,
@@ -203,43 +129,21 @@ def process_tls_crypt_key(master_key_pem: str):
 
     # Find the BEGIN line, skipping any comments
     begin_line = None
-    begin_index = 0
     for i, line in enumerate(lines):
         if line.startswith('-----BEGIN OpenVPN'):
             begin_line = line
-            begin_index = i
             break
 
     if not begin_line:
         raise ValueError("Unrecognized TLS-Crypt key format.")
-
-    # Find the END line
-    end_index = len(lines) - 1
-    for i in range(begin_index + 1, len(lines)):
-        if lines[i].startswith('-----END OpenVPN'):
-            end_index = i
-            break
-
-    # Extract key data between BEGIN and END lines
-    key_data = "".join(lines[begin_index + 1:end_index])
 
     begin_lower = begin_line.strip().lower()
 
     if begin_lower == '-----begin openvpn static key v1-----':
         return 1, master_key_pem
 
-    if begin_lower in (
-        '-----begin openvpn tls crypt v2 server key-----',
-        '-----begin openvpn tls-crypt-v2 server key-----',
-    ):
-        key_bytes = _decode_key_data(key_data)
-        server_key = TLSCryptV2Key(key_bytes)
-        client_key_data = server_key.generate_client_key()
-
-        client_key_pem = "-----BEGIN OpenVPN tls-crypt-v2 client key-----\n"
-        client_key_pem += base64.b64encode(client_key_data).decode('ascii')
-        client_key_pem += "\n-----END OpenVPN tls-crypt-v2 client key-----\n"
-
+    if 'tls-crypt-v2' in begin_lower or 'tls crypt v2' in begin_lower:
+        client_key_pem = _generate_v2_client_key(master_key_pem)
         return 2, client_key_pem
 
     raise ValueError("Unrecognized TLS-Crypt key format.")
