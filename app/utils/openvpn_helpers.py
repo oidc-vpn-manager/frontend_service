@@ -18,6 +18,8 @@ from app.utils.tracing import trace
 import base64
 import os
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.hmac import HMAC
+from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.backends import default_backend
 
 class TLSCryptV2Key:
@@ -61,23 +63,33 @@ class TLSCryptV2Key:
 
     def generate_client_key(self):
         """
-        Generates a unique client key from the server master key.
+        Generates a unique tls-crypt-v2 client key from the server master key.
 
-        Uses AES-256-CTR encryption to derive a unique 64-byte client key.
-        Each call produces a cryptographically unique key due to the random IV.
+        Produces a client key in the format expected by OpenVPN: the raw client
+        key material followed by a wrapped (encrypted + authenticated) copy that
+        the server can unwrap to verify the client.
+
+        The output structure (560 bytes total):
+        - Raw client key: 256 bytes (2 x 128-byte OpenVPN key structs)
+        - Wrapped key:
+          - HMAC-SHA256 tag: 32 bytes (over IV + ciphertext)
+          - IV: 16 bytes (random AES-CTR nonce)
+          - Ciphertext: 256 bytes (AES-256-CTR encrypted client key)
 
         Returns:
-            bytes: 80-byte client key (16-byte IV + 64-byte encrypted data)
+            bytes: 560-byte client key data
 
         Security considerations:
-        - Uses os.urandom() for cryptographically secure IV generation
-        - AES-256 in CTR mode ensures unique key derivation
-        - Client keys cannot be used to derive the master key (one-way)
+        - Uses os.urandom() for cryptographically secure key and IV generation
+        - AES-256-CTR encrypts the client key for confidentiality
+        - HMAC-SHA256 authenticates the wrapped key (encrypt-then-MAC)
+        - Each client key is unique and cannot be derived from other client keys
 
         Example:
             >>> server_key = TLSCryptV2Key(master_key_data)
             >>> client_key_1 = server_key.generate_client_key()
             >>> client_key_2 = server_key.generate_client_key()
+            >>> assert len(client_key_1) == 560
             >>> assert client_key_1 != client_key_2  # Each key is unique
         """
         trace(
@@ -87,11 +99,25 @@ class TLSCryptV2Key:
                 'self': 'SELF'
             }
         )
+        # Generate random 256-byte client key (2 x 128-byte OpenVPN key structs)
+        client_key_raw = os.urandom(256)
+
+        # Encrypt client key with server's encrypt key using AES-256-CTR
         iv = os.urandom(16)
         cipher = Cipher(algorithms.AES(self.master_key[:32]), modes.CTR(iv), backend=default_backend())
         encryptor = cipher.encryptor()
-        client_key_data = encryptor.update(b'\0' * 64) + encryptor.finalize()
-        return iv + client_key_data
+        ciphertext = encryptor.update(client_key_raw) + encryptor.finalize()
+
+        # HMAC-SHA256 over (IV + ciphertext) using server's HMAC key
+        h = HMAC(self.hmac_key, SHA256(), backend=default_backend())
+        h.update(iv + ciphertext)
+        tag = h.finalize()
+
+        # Wrapped key: HMAC(32) + IV(16) + ciphertext(256)
+        wrapped_key = tag + iv + ciphertext
+
+        # Client key file contains: raw key + wrapped key
+        return client_key_raw + wrapped_key
 
 def _decode_key_data(key_data: str) -> bytes:
     """

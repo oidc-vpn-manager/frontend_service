@@ -69,6 +69,10 @@ class TestProcessTlsCryptKey:
         assert client_key is not None
         assert client_key != TLS_CRYPT_V2_SERVER_KEY_HEX
         assert client_key.startswith("-----BEGIN OpenVPN tls-crypt-v2 client key-----")
+        # Verify correct size: 560 bytes -> ~748 base64 chars
+        key_body = client_key.split('\n', 1)[1].rsplit('\n', 2)[0]
+        key_bytes = _b64.b64decode(key_body)
+        assert len(key_bytes) == 560, f"Expected 560 bytes, got {len(key_bytes)}"
 
     def test_handles_v2_key_base64_format(self, app):
         """Test standard OpenVPN base64-encoded V2 key format."""
@@ -77,6 +81,40 @@ class TestProcessTlsCryptKey:
         assert client_key is not None
         assert client_key != TLS_CRYPT_V2_SERVER_KEY_BASE64
         assert client_key.startswith("-----BEGIN OpenVPN tls-crypt-v2 client key-----")
+        # Verify correct size: 560 bytes -> ~748 base64 chars
+        key_body = client_key.split('\n', 1)[1].rsplit('\n', 2)[0]
+        key_bytes = _b64.b64decode(key_body)
+        assert len(key_bytes) == 560, f"Expected 560 bytes, got {len(key_bytes)}"
+
+    def test_v2_client_key_uniqueness(self, app):
+        """Test that each generated V2 client key is unique."""
+        _, key1 = process_tls_crypt_key(TLS_CRYPT_V2_SERVER_KEY_BASE64)
+        _, key2 = process_tls_crypt_key(TLS_CRYPT_V2_SERVER_KEY_BASE64)
+        assert key1 != key2, "Each client key should be unique"
+
+    def test_v2_client_key_structure(self, app):
+        """
+        Test that V2 client key contains raw key + wrapped key (HMAC + IV + ciphertext).
+
+        The 560-byte structure is:
+        - Raw client key: 256 bytes
+        - HMAC-SHA256 tag: 32 bytes
+        - IV: 16 bytes
+        - Ciphertext: 256 bytes (encrypted copy of raw key)
+        """
+        _, client_key = process_tls_crypt_key(TLS_CRYPT_V2_SERVER_KEY_BASE64)
+        key_body = client_key.split('\n', 1)[1].rsplit('\n', 2)[0]
+        key_bytes = _b64.b64decode(key_body)
+
+        raw_key = key_bytes[:256]
+        hmac_tag = key_bytes[256:288]
+        iv = key_bytes[288:304]
+        ciphertext = key_bytes[304:]
+
+        assert len(raw_key) == 256
+        assert len(hmac_tag) == 32
+        assert len(iv) == 16
+        assert len(ciphertext) == 256
 
     def test_handles_empty_key(self, app):
         version, client_key = process_tls_crypt_key(None)
