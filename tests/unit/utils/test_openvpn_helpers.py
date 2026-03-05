@@ -5,7 +5,7 @@ Unit tests for the openvpn_helpers utility.
 import pytest
 from jinja2 import Template
 from app import create_app
-from app.utils.openvpn_helpers import process_tls_crypt_key
+from app.utils.openvpn_helpers import process_tls_crypt_key, _decode_key_data
 
 TLS_CRYPT_V1_KEY = """
 -----BEGIN OpenVPN Static key V1-----
@@ -13,7 +13,7 @@ TLS_CRYPT_V1_KEY = """
 -----END OpenVPN Static key V1-----
 """
 
-TLS_CRYPT_V2_SERVER_KEY = """
+TLS_CRYPT_V2_SERVER_KEY_HEX = """
 -----BEGIN OpenVPN TLS Crypt V2 Server Key-----
 a1a2a3a4a5a6a7a8a1a2a3a4a5a6a7a8a1a2a3a4a5a6a7a8a1a2a3a4a5a6a7a8
 b1b2b3b4b5b6b7b8b1b2b3b4b5b6b7b8b1b2b3b4b5b6b7b8b1b2b3b4b5b6b7b8
@@ -21,6 +21,18 @@ c1c2c3c4c5c6c7c8c1c2c3c4c5c6c7c8c1c2c3c4c5c6c7c8c1c2c3c4c5c6c7c8
 d1d2d3d4d5d6d7d8d1d2d3d4d5d6d7d8d1d2d3d4d5d6d7d8d1d2d3d4d5d6d7d8
 -----END OpenVPN TLS Crypt V2 Server Key-----
 """
+
+# Standard OpenVPN format: base64-encoded, 128 bytes of key data
+import base64 as _b64
+_V2_KEY_BYTES = bytes(range(128))  # deterministic 128-byte key for testing
+TLS_CRYPT_V2_SERVER_KEY_BASE64 = (
+    "-----BEGIN OpenVPN tls-crypt-v2 server key-----\n"
+    + _b64.b64encode(_V2_KEY_BYTES).decode('ascii')
+    + "\n-----END OpenVPN tls-crypt-v2 server key-----\n"
+)
+
+# Keep backward compat alias used by other tests
+TLS_CRYPT_V2_SERVER_KEY = TLS_CRYPT_V2_SERVER_KEY_HEX
 
 class TestProcessTlsCryptKey:
     """
@@ -50,12 +62,21 @@ class TestProcessTlsCryptKey:
         assert version == 1
         assert client_key == TLS_CRYPT_V1_KEY
 
-    def test_handles_v2_key(self, app):
-        version, client_key = process_tls_crypt_key(TLS_CRYPT_V2_SERVER_KEY)
+    def test_handles_v2_key_hex_format(self, app):
+        """Test legacy hex-encoded V2 key format."""
+        version, client_key = process_tls_crypt_key(TLS_CRYPT_V2_SERVER_KEY_HEX)
         assert version == 2
         assert client_key is not None
-        assert client_key != TLS_CRYPT_V2_SERVER_KEY
-        assert client_key.startswith("-----BEGIN OpenVPN TLS Crypt V2 Client Key-----")
+        assert client_key != TLS_CRYPT_V2_SERVER_KEY_HEX
+        assert client_key.startswith("-----BEGIN OpenVPN tls-crypt-v2 client key-----")
+
+    def test_handles_v2_key_base64_format(self, app):
+        """Test standard OpenVPN base64-encoded V2 key format."""
+        version, client_key = process_tls_crypt_key(TLS_CRYPT_V2_SERVER_KEY_BASE64)
+        assert version == 2
+        assert client_key is not None
+        assert client_key != TLS_CRYPT_V2_SERVER_KEY_BASE64
+        assert client_key.startswith("-----BEGIN OpenVPN tls-crypt-v2 client key-----")
 
     def test_handles_empty_key(self, app):
         version, client_key = process_tls_crypt_key(None)
@@ -86,9 +107,9 @@ somedata
         with pytest.raises(ValueError, match="Unrecognized TLS-Crypt key format."):
             process_tls_crypt_key(unknown_key)
 
-    def test_raises_error_for_invalid_v2_key_length(self, app):
+    def test_raises_error_for_invalid_v2_key_length_hex(self, app):
         """
-        Tests that a V2 key with an incorrect length raises a ValueError.
+        Tests that a hex V2 key with an incorrect length raises a ValueError.
         """
         # This key is too short (254 hex characters instead of 256)
         bad_v2_key = """
@@ -99,6 +120,31 @@ c1c2c3c4c5c6c7c8c1c2c3c4c5c6c7c8c1c2c3c4c5c6c7c8c1c2c3c4c5c6c7c8
 d1d2d3d4d5d6d7d8d1d2d3d4d5d6d7d8d1d2d3d4d5d6d7d8d1d2d3d4d5d6d7
 -----END OpenVPN TLS Crypt V2 Server Key-----
 """
+        with pytest.raises(ValueError, match="TLS-Crypt-V2 key must be 128 bytes."):
+            process_tls_crypt_key(bad_v2_key)
+
+    def test_raises_error_for_invalid_key_encoding(self, app):
+        """
+        Tests that a V2 key with data that is neither hex nor base64 raises ValueError.
+        """
+        bad_v2_key = """
+-----BEGIN OpenVPN tls-crypt-v2 server key-----
+!!!not-valid-hex-or-base64@@@
+-----END OpenVPN tls-crypt-v2 server key-----
+"""
+        with pytest.raises(ValueError, match="Key data is neither valid hex nor valid base64."):
+            process_tls_crypt_key(bad_v2_key)
+
+    def test_raises_error_for_invalid_v2_key_length_base64(self, app):
+        """
+        Tests that a base64 V2 key with an incorrect length raises a ValueError.
+        """
+        bad_key_bytes = bytes(range(64))  # Only 64 bytes, not 128
+        bad_v2_key = (
+            "-----BEGIN OpenVPN tls-crypt-v2 server key-----\n"
+            + _b64.b64encode(bad_key_bytes).decode('ascii')
+            + "\n-----END OpenVPN tls-crypt-v2 server key-----\n"
+        )
         with pytest.raises(ValueError, match="TLS-Crypt-V2 key must be 128 bytes."):
             process_tls_crypt_key(bad_v2_key)
 
@@ -192,7 +238,7 @@ class TestTemplateRendering:
         assert '<tls-crypt>' not in rendered
         # V1 directive should not appear (we check this way to avoid false positive from v2 containing "tls-crypt")
         assert rendered.count('<tls-crypt>') == 0
-        assert '-----BEGIN OpenVPN TLS Crypt V2 Client Key-----' in rendered
+        assert '-----BEGIN OpenVPN tls-crypt-v2 client key-----' in rendered
 
     def test_no_key_renders_nothing(self, app):
         """

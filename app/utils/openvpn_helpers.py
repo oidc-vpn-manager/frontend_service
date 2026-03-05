@@ -7,9 +7,15 @@ supporting both v1 (static keys) and v2 (per-client keys) formats.
 Key functionality:
 - process_tls_crypt_key(): Detects key version and generates appropriate client keys
 - TLSCryptV2Key: Handles v2 server master key to client key derivation using AES-CTR
+
+Supported key formats:
+- V1 static keys: "-----BEGIN OpenVPN Static key V1-----"
+- V2 server keys (standard OpenVPN format): "-----BEGIN OpenVPN tls-crypt-v2 server key-----"
+- V2 server keys (legacy hex format): "-----BEGIN OpenVPN TLS Crypt V2 Server Key-----"
 """
 from flask import current_app
 from app.utils.tracing import trace
+import base64
 import os
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
@@ -87,6 +93,32 @@ class TLSCryptV2Key:
         client_key_data = encryptor.update(b'\0' * 64) + encryptor.finalize()
         return iv + client_key_data
 
+def _decode_key_data(key_data: str) -> bytes:
+    """
+    Decodes key data that may be hex-encoded or base64-encoded.
+
+    Tries hex decoding first (legacy format), then falls back to base64
+    (standard OpenVPN format).
+
+    Args:
+        key_data: The raw key data string (hex or base64 encoded)
+
+    Returns:
+        bytes: The decoded key bytes
+
+    Raises:
+        ValueError: If the data cannot be decoded as either hex or base64
+    """
+    try:
+        return bytes.fromhex(key_data)
+    except ValueError:
+        pass
+    try:
+        return base64.b64decode(key_data)
+    except Exception:
+        raise ValueError("Key data is neither valid hex nor valid base64.")
+
+
 def process_tls_crypt_key(master_key_pem: str):
     """
     Processes a TLS-Crypt key, detects version, and returns appropriate client key.
@@ -102,7 +134,8 @@ def process_tls_crypt_key(master_key_pem: str):
     Args:
         master_key_pem (str): PEM-formatted tls-crypt key with appropriate header:
             - V1: "-----BEGIN OpenVPN Static key V1-----"
-            - V2: "-----BEGIN OpenVPN TLS Crypt V2 Server Key-----"
+            - V2 (standard): "-----BEGIN OpenVPN tls-crypt-v2 server key-----"
+            - V2 (legacy): "-----BEGIN OpenVPN TLS Crypt V2 Server Key-----"
 
     Returns:
         tuple: (version, client_key_pem) where:
@@ -164,16 +197,22 @@ def process_tls_crypt_key(master_key_pem: str):
     # Extract key data between BEGIN and END lines
     key_data = "".join(lines[begin_index + 1:end_index])
 
-    if begin_line == '-----BEGIN OpenVPN Static key V1-----':
+    begin_lower = begin_line.strip().lower()
+
+    if begin_lower == '-----begin openvpn static key v1-----':
         return 1, master_key_pem
 
-    if begin_line == '-----BEGIN OpenVPN TLS Crypt V2 Server Key-----':
-        server_key = TLSCryptV2Key(bytes.fromhex(key_data))
+    if begin_lower in (
+        '-----begin openvpn tls crypt v2 server key-----',
+        '-----begin openvpn tls-crypt-v2 server key-----',
+    ):
+        key_bytes = _decode_key_data(key_data)
+        server_key = TLSCryptV2Key(key_bytes)
         client_key_data = server_key.generate_client_key()
 
-        client_key_pem = "-----BEGIN OpenVPN TLS Crypt V2 Client Key-----\n"
-        client_key_pem += client_key_data.hex()
-        client_key_pem += "\n-----END OpenVPN TLS Crypt V2 Client Key-----\n"
+        client_key_pem = "-----BEGIN OpenVPN tls-crypt-v2 client key-----\n"
+        client_key_pem += base64.b64encode(client_key_data).decode('ascii')
+        client_key_pem += "\n-----END OpenVPN tls-crypt-v2 client key-----\n"
 
         return 2, client_key_pem
 
