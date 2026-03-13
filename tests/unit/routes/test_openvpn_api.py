@@ -446,12 +446,12 @@ class TestWebAuthGetAuthenticated:
     def test_get_authenticated_redirect_contains_download_url(
             self, authed_client, app_with_db):
         """
-        Happy path: the openvpn:// URL embeds the /download?token= endpoint URL
+        Happy path: the openvpn:// URL embeds the /download/<token> endpoint URL
         so OpenVPN Connect fetches the profile using the one-time token.
         """
         response = authed_client.get('/openvpn-api/profile')
         location = response.headers['Location']
-        assert '/download?token=' in location
+        assert '/download/' in location
 
     def test_get_authenticated_creates_download_token_in_db(
             self, authed_client, app_with_db):
@@ -462,7 +462,7 @@ class TestWebAuthGetAuthenticated:
         from app.extensions import db
         response = authed_client.get('/openvpn-api/profile')
         location = response.headers['Location']
-        token_uuid = location.split('token=')[1]
+        token_uuid = location.split('/download/')[1]
 
         with app_with_db.app_context():
             token = DownloadToken.query.filter_by(token=token_uuid).first()
@@ -477,7 +477,7 @@ class TestWebAuthGetAuthenticated:
         """
         response = authed_client.get('/openvpn-api/profile')
         location = response.headers['Location']
-        token_uuid = location.split('token=')[1]
+        token_uuid = location.split('/download/')[1]
 
         with app_with_db.app_context():
             token = DownloadToken.query.filter_by(token=token_uuid).first()
@@ -493,7 +493,7 @@ class TestWebAuthGetAuthenticated:
         the common name used in the generated certificate.
         """
         response = authed_client.get('/openvpn-api/profile')
-        token_uuid = response.headers['Location'].split('token=')[1]
+        token_uuid = response.headers['Location'].split('/download/')[1]
         with app_with_db.app_context():
             token = DownloadToken.query.filter_by(token=token_uuid).first()
             assert token.cn == 'alice@example.com'
@@ -505,7 +505,7 @@ class TestWebAuthGetAuthenticated:
         has not been generated yet; that happens when /download redeems the token.
         """
         response = authed_client.get('/openvpn-api/profile')
-        token_uuid = response.headers['Location'].split('token=')[1]
+        token_uuid = response.headers['Location'].split('/download/')[1]
         with app_with_db.app_context():
             token = DownloadToken.query.filter_by(token=token_uuid).first()
             assert not token.collected
@@ -519,8 +519,8 @@ class TestWebAuthGetAuthenticated:
         """
         r1 = authed_client.get('/openvpn-api/profile')
         r2 = authed_client.get('/openvpn-api/profile')
-        uuid1 = r1.headers['Location'].split('token=')[1]
-        uuid2 = r2.headers['Location'].split('token=')[1]
+        uuid1 = r1.headers['Location'].split('/download/')[1]
+        uuid2 = r2.headers['Location'].split('/download/')[1]
         assert uuid1 != uuid2
 
     def test_get_authenticated_with_user_missing_email_falls_back_to_sub(
@@ -541,7 +541,7 @@ class TestWebAuthGetAuthenticated:
         response = client.get('/openvpn-api/profile')
         assert response.status_code == 302
         assert 'openvpn://import-profile/' in response.headers['Location']
-        token_uuid = response.headers['Location'].split('token=')[1]
+        token_uuid = response.headers['Location'].split('/download/')[1]
         with app_with_db.app_context():
             token = DownloadToken.query.filter_by(token=token_uuid).first()
             assert token.cn == 'sub-only-user'
@@ -563,7 +563,7 @@ class TestWebAuthGetAuthenticated:
             }
 
         response = client.get('/openvpn-api/profile')
-        token_uuid = response.headers['Location'].split('token=')[1]
+        token_uuid = response.headers['Location'].split('/download/')[1]
         with app_with_db.app_context():
             token = DownloadToken.query.filter_by(token=token_uuid).first()
             assert json.loads(token.user_groups) == []
@@ -585,7 +585,7 @@ class TestWebAuthGetAuthenticated:
             }
 
         response = client.get('/openvpn-api/profile')
-        token_uuid = response.headers['Location'].split('token=')[1]
+        token_uuid = response.headers['Location'].split('/download/')[1]
         with app_with_db.app_context():
             token = DownloadToken.query.filter_by(token=token_uuid).first()
             groups = json.loads(token.user_groups)
@@ -607,7 +607,7 @@ class TestWebAuthGetAuthenticated:
             }
 
         response = client.get('/openvpn-api/profile')
-        token_uuid = response.headers['Location'].split('token=')[1]
+        token_uuid = response.headers['Location'].split('/download/')[1]
         with app_with_db.app_context():
             token = DownloadToken.query.filter_by(token=token_uuid).first()
             groups = json.loads(token.user_groups)

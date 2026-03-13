@@ -226,7 +226,13 @@ def webauth_profile():
     db.session.add(token)
     db.session.commit()
 
-    download_url = url_for('download.download_profile', token=token.token, _external=True)
+    # Use a path-segment URL (/download/<uuid>) rather than a query-parameter URL
+    # (/download?token=<uuid>) so that the embedded HTTPS URL contains no ? or =
+    # characters.  When macOS passes openvpn://import-profile/https://host/download
+    # ?token=<uuid> to the URL scheme handler it treats ?token=<uuid> as the query
+    # string of the outer openvpn:// URL and strips it, causing OpenVPN Connect to
+    # fetch /download with no token and then fail to parse the error response.
+    download_url = url_for('download.download_profile', token_id=token.token, _external=True)
     openvpn_url = f'openvpn://import-profile/{download_url}'
     current_app.logger.info(
         f"WEB_AUTH: created token for {user['sub']}, redirecting to openvpn://"

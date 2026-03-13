@@ -345,8 +345,8 @@ class TestPrivilegeEscalationBypass:
         for resource in other_user_resources:
             response = client.get(resource)
             # Should not allow access to other users' resources
-            # Response could be 403, 404, or redirect depending on implementation
-            assert response.status_code in [302, 403, 404], f"IDOR vulnerability: accessed {resource}"
+            # Response could be 400, 403, 404, or redirect depending on implementation
+            assert response.status_code in [302, 400, 403, 404], f"IDOR vulnerability: accessed {resource}"
 
     def test_service_separation_bypass(self, client, app):
         """Test service separation cannot be bypassed."""

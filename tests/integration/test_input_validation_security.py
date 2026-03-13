@@ -327,8 +327,8 @@ class TestPathTraversalPrevention:
         for payload in path_traversal_payloads:
             response = client.get(f'/download/{payload}')
 
-            # Should return 404 or 403, not actual file contents
-            assert response.status_code in [403, 404], f"Path traversal may have succeeded: {payload}"
+            # Should return 400/404/403, not actual file contents
+            assert response.status_code in [400, 403, 404], f"Path traversal may have succeeded: {payload}"
 
             if response.status_code == 200:
                 response_text = response.get_data(as_text=True)

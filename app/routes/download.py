@@ -31,14 +31,19 @@ bp = Blueprint('download', __name__)
 
 
 @bp.route('/download')
+@bp.route('/download/<token_id>')
 @user_service_only
-def download_profile():
+def download_profile(token_id=None):
     """
-    Download OpenVPN profile using a token from CLI workflow.
-    
-    Expected query parameter:
-    - token: UUID token generated during OIDC authentication
-    
+    Download OpenVPN profile using a token from CLI workflow or WEB_AUTH.
+
+    Accepts the token either as a URL path segment (/download/<token>) or as a
+    query parameter (/download?token=<token>).  The path-segment form is used by
+    the WEB_AUTH redirect because macOS's URL scheme handler strips the query
+    string from the embedded HTTPS URL inside openvpn://import-profile/…, causing
+    OpenVPN Connect to fetch /download with no token.  Using a path segment avoids
+    any ? or = characters in the embedded URL.
+
     Returns:
     - OpenVPN profile content (application/x-openvpn-profile)
     - 400 if token missing or invalid
@@ -46,9 +51,9 @@ def download_profile():
     - 500 if profile generation fails
     """
     trace(current_app, 'routes.download.download_profile')
-    
-    # Get token from query parameters
-    token = request.args.get('token')
+
+    # Accept token from path segment (WEB_AUTH) or query parameter (CLI)
+    token = token_id or request.args.get('token')
     if not token:
         current_app.logger.warning("Download attempt without token")
         return jsonify({'error': 'Token required'}), 400
