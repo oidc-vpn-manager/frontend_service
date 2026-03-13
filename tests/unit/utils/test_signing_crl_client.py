@@ -69,6 +69,20 @@ class TestSigningCRLClient:
         assert client.api_secret == 'custom-api-key'
         assert client.session.headers['Authorization'] == 'Bearer custom-api-key'
     
+    @patch('app.utils.environment.loadBoolConfigValue', return_value=False)
+    @patch('app.utils.signing_crl_client.loadConfigValueFromFileOrEnvironment')
+    def test_init_https_with_tls_validation_disabled(self, mock_load_config, mock_bool_config, app):
+        """Test that TLS verification is disabled when SIGNING_SERVICE_URL_TLS_VALIDATE is false."""
+        mock_load_config.side_effect = [
+            'https://signing.example.com',
+            'test-secret',
+        ]
+
+        client = SigningCRLClient()
+
+        assert client.base_url == 'https://signing.example.com'
+        assert client.session.verify is False
+
     @patch('app.utils.signing_crl_client.loadConfigValueFromFileOrEnvironment')
     def test_generate_crl_success(self, mock_load_config, app):
         """Test successful CRL generation."""

@@ -13,10 +13,11 @@ The Frontend Service is the main web UI and API gateway for OIDC VPN Manager, ru
   - `routes/` - Route handlers for different endpoints
     - `api/v1.py` - REST API endpoints
     - `auth.py` - OIDC authentication handling
+    - `openvpn_api.py` - OpenVPN 3 WEB_AUTH profile provisioning endpoint
     - `profile.py` - User profile management
     - `admin.py` - Administrative interfaces
     - `certificates.py` - Certificate management
-    - `download.py` - File download handling
+    - `download.py` - File download handling (CLI + WEB_AUTH); returns VPN-Session-Token header
     - `crl.py` - Certificate revocation lists
   - `models/` - SQLAlchemy database models
     - `presharedkey.py` - PSK management
@@ -102,6 +103,35 @@ flask db downgrade
 
 ## API Endpoints
 
+### OpenVPN 3 WEB_AUTH (OpenVPN Connect auto-provisioning)
+
+The `openvpn_api` blueprint implements the OpenVPN 3 WEB_AUTH protocol used by the
+OpenVPN Connect application to automatically provision VPN profiles.
+
+**Route**: `HEAD|GET /openvpn-api/profile` (user service only)
+
+**Flow**:
+1. OpenVPN Connect sends `HEAD /openvpn-api/profile` to discover WEB_AUTH support.
+   - Response always `200`. If a valid `VPN-Session-Token` header is present and the
+     associated certificate has not expired, `Ovpn-WebAuth` is omitted (profile fresh).
+   - Otherwise `Ovpn-WebAuth: <SITE_NAME>,external` signals re-authentication needed.
+2. OpenVPN Connect opens `GET /openvpn-api/profile` in the user's browser.
+   - Unauthenticated: device metadata is stashed in session, user redirected to OIDC login.
+     `/auth/callback` returns to this URL via the `next_url` session key.
+   - Authenticated: a one-time `DownloadToken` is created with OIDC groups for template
+     selection. Browser is redirected to `openvpn://import-profile/https://host/download?token=<uuid>`.
+3. The OS passes the `openvpn://` URL to OpenVPN Connect, which fetches `GET /download?token=<uuid>`.
+   - Profile is generated; response includes `VPN-Session-Token: <uuid>` header.
+   - OpenVPN Connect stores the token UUID for future freshness checks (step 1).
+
+**Template selection**: OIDC groups are stored as JSON on `DownloadToken.user_groups`.
+Both the WEB_AUTH flow and the CLI workflow use `find_best_template_match(app, user_groups)`
+so each user receives the profile for their OIDC group rather than the default template.
+
+**Profile freshness** (`_is_profile_fresh`): Looks up the `DownloadToken` by UUID, checks
+`collected=True`, and returns `True` only if `cert_expiry` is in the future. Any DB error
+falls back to `False` (fail-closed).
+
 ### REST API (v1)
 - `POST /api/v1/profile` - Generate user certificate profiles
 - `POST /api/v1/computer/bundle` - Generate computer certificate profiles (PSK auth, single OVPN file)
@@ -114,7 +144,8 @@ flask db downgrade
 - `/profile` - User profile management
 - `/admin` - Administrative interface
 - `/certificates` - Certificate browser
-- `/download/{token}` - Secure file downloads
+- `/download` - Token-based profile download (CLI + WEB_AUTH); returns `VPN-Session-Token` header
+- `/openvpn-api/profile` - WEB_AUTH discovery/provisioning (HEAD + GET)
 
 ## Configuration
 

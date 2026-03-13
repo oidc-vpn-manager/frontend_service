@@ -51,6 +51,176 @@ servers:
     description: Development admin service
 
 paths:
+  /openvpn-api/profile:
+    head:
+      summary: WEB_AUTH discovery and profile freshness check
+      description: |
+        Used by OpenVPN Connect to discover WEB_AUTH support and to check whether
+        a previously-issued profile is still valid without triggering re-authentication.
+
+        **Discovery (no token)**: Returns `Ovpn-WebAuth: <SITE_NAME>,external` in the
+        response, telling OpenVPN Connect it must authenticate via an external browser.
+
+        **Freshness check (with token)**: If a valid `VPN-Session-Token` header is
+        supplied and the associated certificate has not expired, the `Ovpn-WebAuth`
+        header is omitted, indicating the profile is still fresh.
+
+        **Service Separation**: Only available on the user service.
+      tags:
+        - OpenVPN Connect WEB_AUTH
+      parameters:
+        - in: header
+          name: VPN-Session-Token
+          schema:
+            type: string
+            format: uuid
+          required: false
+          description: |
+            UUID token returned as `VPN-Session-Token` by `GET /download` after a
+            successful profile download. OpenVPN Connect sends this on subsequent
+            HEAD requests to check whether the certificate is still valid.
+      responses:
+        '200':
+          description: |
+            Always 200. If `Ovpn-WebAuth` header is present, re-authentication is
+            required. If absent, the existing profile is still valid.
+          headers:
+            Ovpn-WebAuth:
+              schema:
+                type: string
+                example: "My VPN,external"
+              description: |
+                Present when re-authentication is required.
+                Format: `<SITE_NAME>,external`
+    get:
+      summary: WEB_AUTH profile provisioning (browser flow)
+      description: |
+        Invoked by OpenVPN Connect in the user's external browser after the HEAD
+        discovery response indicated re-authentication was required.
+
+        **Unauthenticated**: Device metadata (deviceID, deviceModel, deviceOS,
+        appVersion) is stashed in the session and the user is redirected to the
+        OIDC login flow. On successful authentication, `/auth/callback` returns
+        here via the `next_url` session key.
+
+        **Authenticated**: A one-time `DownloadToken` is created with the user's
+        OIDC groups (for template selection), then the browser is redirected to
+        `openvpn://import-profile/https://<host>/download?token=<uuid>`. The OS
+        passes this URL to OpenVPN Connect, which fetches the profile.
+
+        **Service Separation**: Only available on the user service.
+      tags:
+        - OpenVPN Connect WEB_AUTH
+      parameters:
+        - in: query
+          name: deviceID
+          schema:
+            type: string
+          required: false
+          description: OpenVPN Connect device identifier (stored for audit)
+        - in: query
+          name: deviceModel
+          schema:
+            type: string
+          required: false
+          description: Device model string (stored for audit)
+        - in: query
+          name: deviceOS
+          schema:
+            type: string
+          required: false
+          description: Device operating system (stored for audit)
+        - in: query
+          name: appVersion
+          schema:
+            type: string
+          required: false
+          description: OpenVPN Connect application version (stored for audit)
+      responses:
+        '302':
+          description: |
+            Redirect to OIDC login (unauthenticated) or to
+            `openvpn://import-profile/<download_url>` (authenticated).
+          headers:
+            Location:
+              schema:
+                type: string
+              description: |
+                `/auth/login` for unauthenticated requests, or
+                `openvpn://import-profile/https://<host>/download?token=<uuid>`
+                for authenticated requests.
+
+
+  /download:
+    get:
+      summary: Download OpenVPN profile (token-based)
+      description: |
+        Generates and returns a complete `.ovpn` profile using a one-time download
+        token issued by the CLI workflow (`/auth/callback`) or the WEB_AUTH flow
+        (`/openvpn-api/profile`).
+
+        The token is valid for 5 minutes and can only be used once. On success the
+        token is marked as collected and the signed certificate expiry is stored for
+        future WEB_AUTH freshness checks.
+
+        The response includes a `VPN-Session-Token` header containing the token UUID.
+        OpenVPN Connect stores this value and sends it on future `HEAD /openvpn-api/profile`
+        requests to determine whether re-authentication is needed.
+
+        **Service Separation**: Only available on the user service.
+      tags:
+        - OpenVPN Connect WEB_AUTH
+        - Device Authentication
+      parameters:
+        - in: query
+          name: token
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: One-time download token UUID
+      responses:
+        '200':
+          description: OpenVPN profile successfully generated and returned
+          content:
+            application/x-openvpn-profile:
+              schema:
+                type: string
+                description: OpenVPN `.ovpn` configuration file contents
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: "attachment; filename=john.ovpn"
+              description: Suggested filename for the downloaded profile
+            VPN-Session-Token:
+              schema:
+                type: string
+                format: uuid
+                example: "550e8400-e29b-41d4-a716-446655440000"
+              description: |
+                Token UUID for OpenVPN Connect freshness checks.
+                Send as `VPN-Session-Token` header on `HEAD /openvpn-api/profile`
+                to determine whether re-authentication is required.
+        '400':
+          description: Token missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '410':
+          description: Token expired or already used
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Profile generation failed (signing service error or internal error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /v1/server/bundle:
     get:
       summary: Server configuration bundle retrieval (GET)
@@ -219,18 +389,30 @@ components:
       description: Standard error response format
 
 tags:
+  - name: OpenVPN Connect WEB_AUTH
+    description: |
+      Endpoints implementing the OpenVPN 3 WEB_AUTH protocol for automatic profile
+      provisioning into the OpenVPN Connect application.
+
+      **Flow**:
+      1. `HEAD /openvpn-api/profile` — discovery and freshness check
+      2. `GET /openvpn-api/profile` — OIDC authentication + openvpn:// redirect
+      3. `GET /download?token=<uuid>` — profile generation; returns `VPN-Session-Token`
+
+      **Service Separation**: Only available on user service deployments.
+
   - name: Device Authentication
     description: |
       Endpoints for device certificate provisioning using pre-shared keys.
       Used by automated systems to obtain client certificates for OpenVPN access.
-      
+
       **Service Separation**: Only available on user service deployments.
       Admin service deployments will redirect these requests to the user service.
-      
+
   - name: Server Configuration
     description: |
       Endpoints for retrieving complete OpenVPN server configuration bundles.
       Used by infrastructure automation to deploy and configure OpenVPN servers.
-      
+
       **Service Separation**: Only available on admin service deployments.
       User service deployments will reject these requests with 403 Forbidden.

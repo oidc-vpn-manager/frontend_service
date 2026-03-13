@@ -66,6 +66,9 @@ def load_routes(app: Flask):
     
     from .download import bp as download_bp
     app.register_blueprint(download_bp)
+
+    from .openvpn_api import bp as openvpn_api_bp
+    app.register_blueprint(openvpn_api_bp)
     
     # Register test-only routes ONLY in development environments or testing
     # SECURITY: Critical authentication bypass prevention

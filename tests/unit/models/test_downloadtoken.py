@@ -3,6 +3,7 @@ Unit tests for the DownloadToken model.
 """
 
 from datetime import datetime, timezone, timedelta
+import json
 import pytest
 from freezegun import freeze_time
 
@@ -79,3 +80,113 @@ class TestDownloadToken:
 
         # Assert: The window should be correctly identified as closed
         assert is_expired is True
+
+
+class TestDownloadTokenUserGroups:
+    """
+    Tests for the user_groups field and get_user_groups_list helper method.
+
+    Security considerations:
+    - user_groups stores OIDC group memberships used for OpenVPN template selection.
+    - Stored as JSON text to support arbitrary group name strings.
+    - get_user_groups_list() provides a safe parsed interface used by download routes.
+    """
+
+    def test_user_groups_field_exists(self):
+        """
+        Tests that the DownloadToken model has a user_groups attribute.
+        """
+        token = DownloadToken()
+        assert hasattr(token, 'user_groups')
+
+    def test_user_groups_defaults_to_none(self):
+        """
+        Tests that user_groups is None when not explicitly set,
+        supporting backward compatibility with existing CLI tokens.
+        """
+        token = DownloadToken()
+        assert token.user_groups is None
+
+    def test_user_groups_can_store_json_string(self):
+        """
+        Tests that user_groups accepts and stores a JSON-encoded list of group names.
+        """
+        token = DownloadToken()
+        groups_json = json.dumps(['engineering', 'vpn-users'])
+        token.user_groups = groups_json  # Set directly to bypass mass assignment
+        assert token.user_groups == groups_json
+
+    def test_user_groups_allowed_in_constructor(self):
+        """
+        Tests that user_groups can be set via the constructor (in _allowed_attributes).
+        Required so routes can pass groups when creating tokens.
+        """
+        groups_json = json.dumps(['admin', 'vpn-users'])
+        token = DownloadToken(
+            user='user123',
+            user_groups=groups_json,
+        )
+        assert token.user_groups == groups_json
+
+    def test_get_user_groups_list_with_populated_groups(self):
+        """
+        Tests that get_user_groups_list() returns the parsed Python list
+        when user_groups contains valid JSON.
+        """
+        token = DownloadToken()
+        token.user_groups = json.dumps(['engineering', 'vpn-users'])
+        result = token.get_user_groups_list()
+        assert result == ['engineering', 'vpn-users']
+
+    def test_get_user_groups_list_with_none(self):
+        """
+        Tests that get_user_groups_list() returns an empty list when user_groups is None.
+        This ensures backward compatibility with tokens created before this field existed.
+        """
+        token = DownloadToken()
+        token.user_groups = None
+        assert token.get_user_groups_list() == []
+
+    def test_get_user_groups_list_with_empty_list(self):
+        """
+        Tests that get_user_groups_list() returns an empty list when
+        user_groups encodes an empty JSON array.
+        """
+        token = DownloadToken()
+        token.user_groups = json.dumps([])
+        assert token.get_user_groups_list() == []
+
+    def test_get_user_groups_list_with_single_group(self):
+        """
+        Tests that get_user_groups_list() works correctly for a single group.
+        """
+        token = DownloadToken()
+        token.user_groups = json.dumps(['vpn-users'])
+        assert token.get_user_groups_list() == ['vpn-users']
+
+    def test_get_user_groups_list_with_invalid_json(self):
+        """
+        Tests that get_user_groups_list() returns an empty list when
+        user_groups contains malformed JSON rather than raising an exception.
+        Defensive against DB corruption or injection attempts.
+        """
+        token = DownloadToken()
+        token.user_groups = 'not-valid-json'
+        assert token.get_user_groups_list() == []
+
+    def test_user_groups_not_accepted_for_sensitive_fields(self):
+        """
+        OWASP API3 (Mass Assignment): Verifies that fields intentionally excluded
+        from _allowed_attributes (downloadable, collected) cannot be set via constructor,
+        confirming the protection mechanism still works after adding user_groups.
+        """
+        token = DownloadToken(
+            user='user123',
+            user_groups=json.dumps(['vpn-users']),
+            collected=True,      # Should be ignored
+            downloadable=False,  # Should be ignored
+        )
+        # collected and downloadable are not set (SQLAlchemy defaults only apply on DB insert)
+        # The key assertion is that the constructor silently ignored them rather than raising
+        assert token.collected is None  # Not True as supplied - ignored by mass assignment protection
+        assert token.downloadable is None  # Not False as supplied - ignored by mass assignment protection

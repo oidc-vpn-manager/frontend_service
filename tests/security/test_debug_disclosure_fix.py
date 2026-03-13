@@ -258,8 +258,16 @@ class TestDebugInformationDisclosure:
         from app.utils.logging_config import configure_security_logging
         from app import create_app
 
-        # Test production environment
-        prod_app = create_app('production')
+        # Override DATABASE_URL so the production app does not try to open the
+        # on-disk SQLite path (/data/sqlite/frontend.db) which does not exist in
+        # the test/CI environment.  We only need the app to initialise far enough
+        # to inspect its config and error handlers.
+        prod_env = {
+            'DATABASE_URL': 'sqlite://',
+            'FERNET_ENCRYPTION_KEY': 'YenxIAHqvrO7OHbNXvzAxEhthHCaitvnV9CALkQvvCc=',
+        }
+        with patch.dict(os.environ, prod_env):
+            prod_app = create_app('production')
         with prod_app.app_context():
             configure_security_logging(prod_app)
 

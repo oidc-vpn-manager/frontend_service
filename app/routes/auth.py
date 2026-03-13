@@ -2,6 +2,7 @@
 Handles OIDC authentication flows (login, callback, logout).
 """
 
+import json
 from flask import Blueprint, redirect, url_for, session, current_app, request
 from app.utils.tracing import trace
 from app.utils.security_logging import security_logger
@@ -126,7 +127,7 @@ def callback():
             from app.extensions import db
             import uuid
 
-            # Create download token
+            # Create download token, storing OIDC groups for template selection
             download_token = DownloadToken(
                 token=str(uuid.uuid4()),
                 user=session['user']['sub'],
@@ -134,7 +135,8 @@ def callback():
                 requester_ip=request.remote_addr,
                 user_agent_string=request.user_agent.string,
                 detected_os=request.user_agent.platform,
-                optionset_used=session.get('cli_optionset', '')
+                optionset_used=session.get('cli_optionset', ''),
+                user_groups=json.dumps(user_groups),
             )
             db.session.add(download_token)
             db.session.commit()

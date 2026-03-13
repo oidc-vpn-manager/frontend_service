@@ -2,6 +2,7 @@
 Tests for CLI workflow (get_openvpn_config script support).
 """
 
+import json
 import pytest
 from unittest.mock import patch, MagicMock
 import uuid
@@ -123,11 +124,133 @@ class TestAuthCallback:
         assert download_token.cn == 'user@example.com'
         assert download_token.optionset_used == 'test_option'
         assert not download_token.collected
-        
+        # OIDC groups must be stored for correct template selection at download time
+        assert download_token.user_groups == json.dumps(['users'])
+
         # CLI params should be cleaned up from session
         with client.session_transaction() as session:
             assert 'cli_port' not in session
             assert 'cli_optionset' not in session
+
+
+    @patch('app.routes.auth.oauth.oidc')
+    def test_callback_cli_workflow_stores_groups_list(self, mock_oidc, client, app_with_db):
+        """
+        Test that CLI callback stores multiple OIDC groups when userinfo returns a list.
+
+        Groups are stored as JSON on the DownloadToken so the download route
+        can use them to select the correct OpenVPN template rather than
+        always falling back to the default template.
+        """
+        with client.session_transaction() as session:
+            session['cli_port'] = '9999'
+            session['cli_optionset'] = ''
+
+        mock_oidc.authorize_access_token.return_value = {'id_token': 'tok'}
+        mock_oidc.userinfo.return_value = {
+            'sub': 'user456',
+            'email': 'other@example.com',
+            'groups': ['engineering', 'vpn-users', 'contractors'],
+        }
+
+        response = client.get('/auth/callback')
+        assert response.status_code == 302
+
+        location = response.headers['Location']
+        token_uuid = location.split('token=')[1]
+
+        from app.models import DownloadToken
+        download_token = DownloadToken.query.filter_by(token=token_uuid).first()
+        assert download_token is not None
+        stored_groups = json.loads(download_token.user_groups)
+        assert stored_groups == ['engineering', 'vpn-users', 'contractors']
+
+    @patch('app.routes.auth.oauth.oidc')
+    def test_callback_cli_workflow_stores_groups_comma_separated(self, mock_oidc, client, app_with_db):
+        """
+        Test that CLI callback handles comma-separated group strings from some OIDC providers.
+        """
+        with client.session_transaction() as session:
+            session['cli_port'] = '9998'
+            session['cli_optionset'] = ''
+
+        mock_oidc.authorize_access_token.return_value = {'id_token': 'tok'}
+        mock_oidc.userinfo.return_value = {
+            'sub': 'user789',
+            'email': 'csv@example.com',
+            'groups': 'engineering,vpn-users',
+        }
+
+        response = client.get('/auth/callback')
+        assert response.status_code == 302
+
+        location = response.headers['Location']
+        token_uuid = location.split('token=')[1]
+
+        from app.models import DownloadToken
+        download_token = DownloadToken.query.filter_by(token=token_uuid).first()
+        assert download_token is not None
+        stored_groups = json.loads(download_token.user_groups)
+        assert stored_groups == ['engineering', 'vpn-users']
+
+    @patch('app.routes.auth.oauth.oidc')
+    def test_callback_cli_workflow_stores_empty_list_when_no_groups(self, mock_oidc, client, app_with_db):
+        """
+        Tests that a user with no groups field in the OIDC response gets an
+        empty JSON list stored on the token.
+
+        Ensures the download route's fallback to default template is explicit
+        and consistent rather than dependent on None-handling in multiple places.
+        """
+        with client.session_transaction() as session:
+            session['cli_port'] = '9997'
+            session['cli_optionset'] = ''
+
+        mock_oidc.authorize_access_token.return_value = {'id_token': 'tok'}
+        mock_oidc.userinfo.return_value = {
+            'sub': 'nogroupuser',
+            'email': 'nogroup@example.com',
+            # No 'groups' key at all
+        }
+
+        response = client.get('/auth/callback')
+        assert response.status_code == 302
+
+        location = response.headers['Location']
+        token_uuid = location.split('token=')[1]
+
+        from app.models import DownloadToken
+        download_token = DownloadToken.query.filter_by(token=token_uuid).first()
+        assert download_token is not None
+        assert json.loads(download_token.user_groups) == []
+
+    @patch('app.routes.auth.oauth.oidc')
+    def test_callback_cli_workflow_stores_empty_list_when_groups_is_empty_list(
+            self, mock_oidc, client, app_with_db):
+        """
+        Tests that an empty groups list from the OIDC provider is stored correctly.
+        """
+        with client.session_transaction() as session:
+            session['cli_port'] = '9996'
+            session['cli_optionset'] = ''
+
+        mock_oidc.authorize_access_token.return_value = {'id_token': 'tok'}
+        mock_oidc.userinfo.return_value = {
+            'sub': 'emptygroups',
+            'email': 'empty@example.com',
+            'groups': [],
+        }
+
+        response = client.get('/auth/callback')
+        assert response.status_code == 302
+
+        location = response.headers['Location']
+        token_uuid = location.split('token=')[1]
+
+        from app.models import DownloadToken
+        download_token = DownloadToken.query.filter_by(token=token_uuid).first()
+        assert download_token is not None
+        assert json.loads(download_token.user_groups) == []
 
 
 class TestDownloadRoute:
@@ -479,3 +602,362 @@ class TestDownloadRouteCoverage:
                 assert render_kwargs['auth'] == 'SHA512'
                 assert render_kwargs['fast-io'] == True
                 assert render_kwargs['sndbuf'] == 65536
+
+class TestDownloadRouteGroupsAndSessionToken:
+    """
+    Tests that the download route uses OIDC groups from the token for template
+    selection, stores certificate expiry, and returns a VPN-Session-Token header.
+
+    These cover the bug fix (CLI was always using default template regardless
+    of OIDC groups) and new WEB_AUTH-supporting behaviour.
+
+    Security considerations (OWASP API3 - Excessive Data Exposure):
+    - VPN-Session-Token must only be the token UUID — no other user data leaked.
+    - cert_expiry must be parsed defensively; malformed certs must not crash download.
+    """
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_download_uses_groups_from_token_for_template_selection(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db):
+        """
+        Tests that find_best_template_match is called with the groups stored on
+        the DownloadToken, not with an empty list.
+
+        Regression test: previously the download route always passed [] to
+        find_best_template_match, causing all CLI/WEB_AUTH users to receive the
+        default template regardless of their OIDC group memberships.
+        """
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='u@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = 'fake-cert'
+        mock_template.return_value = ('engineering', 'template-content')
+        mock_render.return_value = 'config'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token = DownloadToken(
+                user='user123',
+                cn='u@example.com',
+                requester_ip='127.0.0.1',
+                optionset_used='',
+                user_groups=json.dumps(['engineering', 'vpn-users']),
+            )
+            token.token = str(uuid.uuid4())
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+
+            response = client.get(f'/download?token={token.token}')
+            assert response.status_code == 200
+
+            # find_best_template_match must have been called with the stored groups
+            mock_template.assert_called_once()
+            call_args = mock_template.call_args
+            passed_groups = call_args[0][1]  # second positional arg
+            assert passed_groups == ['engineering', 'vpn-users']
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_download_uses_empty_groups_when_token_has_none(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db):
+        """
+        Tests backward compatibility: tokens without user_groups (e.g. created
+        before the migration) pass an empty group list to find_best_template_match,
+        resulting in the default template being selected.
+        """
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='u@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = 'fake-cert'
+        mock_template.return_value = ('Default', 'default-content')
+        mock_render.return_value = 'config'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token = DownloadToken(
+                user='user123',
+                cn='u@example.com',
+                requester_ip='127.0.0.1',
+                optionset_used='',
+            )
+            token.token = str(uuid.uuid4())
+            token.user_groups = None  # Explicit None, simulating legacy token
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+
+            response = client.get(f'/download?token={token.token}')
+            assert response.status_code == 200
+
+            mock_template.assert_called_once()
+            passed_groups = mock_template.call_args[0][1]
+            assert passed_groups == []
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_download_returns_vpn_session_token_header(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db):
+        """
+        Tests that a successful download returns the VPN-Session-Token response
+        header containing the token UUID.
+
+        OpenVPN Connect stores this token and sends it on subsequent HEAD
+        /openvpn-api/profile requests to check whether the profile needs renewal.
+        """
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='u@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = 'fake-cert'
+        mock_template.return_value = ('Default', 'content')
+        mock_render.return_value = 'config'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token_uuid = str(uuid.uuid4())
+            token = DownloadToken(
+                user='user123',
+                cn='u@example.com',
+                requester_ip='127.0.0.1',
+                optionset_used='',
+            )
+            token.token = token_uuid
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+
+            response = client.get(f'/download?token={token_uuid}')
+            assert response.status_code == 200
+            assert 'VPN-Session-Token' in response.headers
+            assert response.headers['VPN-Session-Token'] == token_uuid
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_download_stores_cert_expiry_from_signed_cert(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db):
+        """
+        Tests that a successful download parses the certificate expiry from the
+        signed PEM and stores it on the DownloadToken.
+
+        cert_expiry is used by the HEAD /openvpn-api/profile freshness check
+        so OpenVPN Connect can determine whether a profile needs renewal.
+        """
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.x509.oid import NameOID
+        from datetime import datetime, timezone, timedelta
+
+        # Generate a self-signed cert with a known expiry
+        key = ec.generate_private_key(ec.SECP256R1())
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, u"test@example.com"),
+        ])
+        expected_expiry = datetime(2027, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc))
+            .not_valid_after(expected_expiry)
+            .sign(key, hashes.SHA256())
+        )
+        cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode('utf-8')
+
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='test@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = cert_pem
+        mock_template.return_value = ('Default', 'content')
+        mock_render.return_value = 'config'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token = DownloadToken(
+                user='user123',
+                cn='test@example.com',
+                requester_ip='127.0.0.1',
+                optionset_used='',
+            )
+            token.token = str(uuid.uuid4())
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+            token_uuid = token.token
+
+            response = client.get(f'/download?token={token_uuid}')
+            assert response.status_code == 200
+
+            db.session.refresh(token)
+            assert token.cert_expiry is not None
+            # Allow for UTC timezone representation differences
+            stored = token.cert_expiry
+            if stored.tzinfo is None:
+                stored = stored.replace(tzinfo=timezone.utc)
+            assert stored == expected_expiry
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_download_tolerates_unparseable_cert_expiry(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db):
+        """
+        Tests that a download succeeds and returns 200 even when the signed cert
+        PEM cannot be parsed (e.g. mock returning a non-PEM string).
+
+        cert_expiry is best-effort: failure to parse must not block profile delivery.
+        """
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='u@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = 'this-is-not-a-pem-cert'
+        mock_template.return_value = ('Default', 'content')
+        mock_render.return_value = 'config'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token = DownloadToken(
+                user='user123',
+                cn='u@example.com',
+                requester_ip='127.0.0.1',
+                optionset_used='',
+            )
+            token.token = str(uuid.uuid4())
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+
+            response = client.get(f'/download?token={token.token}')
+            # Must still succeed — cert_expiry is optional
+            assert response.status_code == 200
+            assert response.headers['Content-Type'] == 'application/x-openvpn-profile'
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_download_with_malformed_user_groups_json_falls_back_to_default(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db):
+        """
+        Tests that when user_groups on the token contains malformed JSON,
+        the download route falls back to an empty group list (default template)
+        rather than crashing.
+
+        Defensive against DB corruption or deliberate manipulation of stored data.
+        """
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='u@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = 'fake-cert'
+        mock_template.return_value = ('Default', 'content')
+        mock_render.return_value = 'config'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token = DownloadToken(
+                user='user123',
+                cn='u@example.com',
+                requester_ip='127.0.0.1',
+                optionset_used='',
+            )
+            token.token = str(uuid.uuid4())
+            token.user_groups = 'not-valid-json'
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+
+            response = client.get(f'/download?token={token.token}')
+            assert response.status_code == 200
+
+            # Should have called template match with empty list (safe fallback)
+            passed_groups = mock_template.call_args[0][1]
+            assert passed_groups == []
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_download_vpn_session_token_header_contains_only_uuid(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db):
+        """
+        OWASP API3 (Excessive Data Exposure): Verifies that the VPN-Session-Token
+        response header contains only the token UUID and no other user data
+        (no email, groups, sub, or PII is leaked in the header).
+        """
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='u@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = 'fake-cert'
+        mock_template.return_value = ('Default', 'content')
+        mock_render.return_value = 'config'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token_uuid = str(uuid.uuid4())
+            token = DownloadToken(
+                user='sensitive-user-sub',
+                cn='sensitive@example.com',
+                requester_ip='127.0.0.1',
+                optionset_used='',
+                user_groups=json.dumps(['engineering']),
+            )
+            token.token = token_uuid
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+
+            response = client.get(f'/download?token={token_uuid}')
+            assert response.status_code == 200
+
+            session_token_header = response.headers['VPN-Session-Token']
+            # Must be exactly the UUID — no PII
+            assert session_token_header == token_uuid
+            assert 'sensitive' not in session_token_header
+            assert 'engineering' not in session_token_header

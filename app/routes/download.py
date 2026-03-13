@@ -1,6 +1,16 @@
 """
-Download routes for CLI workflow.
-Handles token-based OpenVPN profile downloads for get_openvpn_config script.
+Download routes for CLI workflow and WEB_AUTH (OpenVPN Connect) profile delivery.
+
+Handles token-based OpenVPN profile downloads initiated by:
+- The get_openvpn_config CLI tool (cli_port workflow via /auth/callback)
+- The OpenVPN Connect WEB_AUTH flow (/openvpn-api/profile redirect)
+
+Profile generation uses the OIDC group memberships stored on the DownloadToken
+to select the correct template, so each user receives the profile appropriate
+to their group rather than the default template.
+
+Returns a VPN-Session-Token response header containing the token UUID so that
+OpenVPN Connect can check profile freshness via HEAD /openvpn-api/profile.
 """
 
 from flask import Blueprint, request, current_app, Response, jsonify
@@ -11,6 +21,7 @@ from app.utils.ca_core import generate_key_and_csr
 from app.utils.signing_client import request_signed_certificate, SigningServiceError
 from app.utils.render_config_template import find_best_template_match, render_config_template
 from app.utils.openvpn_helpers import process_tls_crypt_key
+from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 from datetime import datetime, timezone
@@ -86,9 +97,10 @@ def download_profile():
         master_tls_key = current_app.config.get('OPENVPN_TLS_CRYPT_KEY')
         tls_crypt_version, client_tls_crypt_key = process_tls_crypt_key(master_tls_key)
 
-        # 4. Determine template based on stored user info or default
-        # Note: For CLI workflow, we don't have full session but can use defaults
-        user_groups = []  # CLI users get default template
+        # 4. Determine template using OIDC groups stored on the token.
+        # get_user_groups_list() returns [] for legacy tokens without groups,
+        # which causes find_best_template_match to fall back to the Default template.
+        user_groups = download_token.get_user_groups_list()
         template_collection = current_app.config.get('TEMPLATE_COLLECTION', [])
         template_name, template_content = find_best_template_match(
             current_app, user_groups, template_collection
@@ -133,25 +145,37 @@ def download_profile():
         # 7. Render the final OpenVPN configuration
         final_config = render_config_template(current_app, template_content, **context)
 
-        # 8. Mark token as collected and update download info
+        # 8. Parse certificate expiry from the signed PEM for profile freshness checks.
+        # Used by HEAD /openvpn-api/profile: OpenVPN Connect sends the token UUID
+        # back as VPN-Session-Token to determine whether it needs a new profile.
+        # Failure to parse is non-fatal — cert_expiry stays None.
+        try:
+            cert_obj = x509.load_pem_x509_certificate(signed_cert_pem.encode('utf-8'))
+            cert_expiry = cert_obj.not_valid_after_utc
+        except Exception:
+            cert_expiry = None
+
+        # 9. Mark token as collected and persist cert expiry + final config
         download_token.collected = True
         download_token.ovpn_content = final_config.encode('utf-8')
-        download_token.cert_expiry = None  # Could parse cert expiry from signed_cert_pem if needed
-        
-        # Update audit record with final details
+        download_token.cert_expiry = cert_expiry
         download_token.cn = final_common_name
-        
+
         from app.extensions import db
         db.session.commit()
 
-        current_app.logger.info(f"CLI profile generated successfully for {user_id}")
+        current_app.logger.info(f"Profile generated successfully for {user_id}")
 
-        # 9. Return the file as download
+        # 10. Return the profile with VPN-Session-Token so OpenVPN Connect can
+        # check freshness via HEAD /openvpn-api/profile without re-authenticating.
         download_filename = f"{user_email.split('@')[0]}.ovpn"
         return Response(
             final_config,
             mimetype="application/x-openvpn-profile",
-            headers={"Content-disposition": f"attachment; filename={download_filename}"}
+            headers={
+                "Content-disposition": f"attachment; filename={download_filename}",
+                "VPN-Session-Token": download_token.token,
+            }
         )
 
     except SigningServiceError as e:
