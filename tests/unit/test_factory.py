@@ -18,6 +18,8 @@ def mock_dependencies(monkeypatch):
     # Set required security keys for configuration
     monkeypatch.setenv('FLASK_SECRET_KEY', 'test-secret-key-for-unit-tests-only')
     monkeypatch.setenv('FERNET_ENCRYPTION_KEY', 'test-encryption-key-for-unit-tests-only')
+    # Disable template validation in unit tests (no templates on disk)
+    monkeypatch.setenv('OVPN_TEMPLATE_PATH', '')
     
     # Patch the functions in the modules where they are defined
     monkeypatch.setattr('app.extensions.init_extensions', mock_init_extensions)

@@ -125,6 +125,7 @@ def download_profile():
             'tlscrypt_key': client_tls_crypt_key,
             'tlscrypt_version': tls_crypt_version,
             # Default template variables to prevent undefined errors
+            'protocol': 'udp',
             'use_tcp': False,
             'custom_port': None,
             'enable_compression': False,

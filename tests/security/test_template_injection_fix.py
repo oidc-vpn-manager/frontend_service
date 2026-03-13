@@ -42,15 +42,15 @@ class TestTemplateInjectionFix:
             'description': malicious_description
         }
 
-        # Should not execute the malicious code, should escape it instead
+        # Should not execute the malicious code.
+        # Security model: context variable values are never re-evaluated as Jinja2
+        # template code; the SandboxedEnvironment also prevents attribute access to
+        # dangerous builtins.  The malicious string is output literally.
         result = render_config_template(app_mock, template, **context)
 
-        # The malicious content should be escaped, not executed
-        # Check that the dangerous content has been HTML escaped
-        assert "&#39;" in result  # Single quotes should be HTML escaped
-        assert "__class__" in result  # Original text preserved but escaped
-        # Verify no actual command execution occurred (result should contain template syntax, not execution results)
-        assert "{{" in result and "}}" in result
+        # The dangerous content must appear as literal text, not be executed
+        assert "__class__" in result  # Original text preserved, not evaluated
+        assert "{{" in result and "}}" in result  # Template syntax output verbatim
 
     def test_blocks_config_access_attempt(self):
         """Test that attempts to access Flask config are blocked."""
@@ -90,12 +90,12 @@ class TestTemplateInjectionFix:
 
         result = render_config_template(app_mock, template, **context)
 
-        # Should be escaped, not executed
-        assert "{{" in result and "}}" in result  # Template syntax preserved
-        assert "__import__" in result  # Original text preserved but escaped
-        # The word "pwned" should be HTML escaped if present
-        if "pwned" in result:
-            assert "&#39;" in result  # Indicates HTML escaping occurred
+        # Should be output as literal text, not executed
+        assert "{{" in result and "}}" in result  # Template syntax output verbatim
+        assert "__import__" in result  # Original text preserved, not evaluated
+        # If "pwned" appears it must be the literal string from the input, not
+        # the result of executing echo — which confirms no execution occurred
+        assert "pwned" in result  # Literal text, not command output
 
     def test_blocks_class_access_attempts(self):
         """Test that attempts to access Python classes are blocked."""

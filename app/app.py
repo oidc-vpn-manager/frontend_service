@@ -72,6 +72,11 @@ def create_app(config_name: Optional[str] = None):
     from app.commands import init_commands
     init_commands(app)
 
+    # Validate OpenVPN config templates at startup so broken templates are caught
+    # before the pod accepts traffic rather than at the first user request.
+    from app.utils.render_config_template import validate_config_templates
+    validate_config_templates(app)
+
     # Flask handles path traversal protection automatically through path normalization
 
     # Add security headers (Flask-Talisman handles CSP, we add additional headers)

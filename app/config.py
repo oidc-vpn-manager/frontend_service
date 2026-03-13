@@ -157,3 +157,8 @@ class DevelopmentConfig(Config):
         
         self.SQLALCHEMY_TRACK_MODIFICATIONS = True
 
+        # In development/testing, skip template validation unless a path is
+        # explicitly provided.  Production Config keeps './openvpn_templates'
+        # as the default so the startup check always runs in a real pod.
+        self.OVPN_TEMPLATE_PATH = os.environ.get('OVPN_TEMPLATE_PATH')
+

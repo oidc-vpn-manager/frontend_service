@@ -265,6 +265,8 @@ class TestDebugInformationDisclosure:
         prod_env = {
             'DATABASE_URL': 'sqlite://',
             'FERNET_ENCRYPTION_KEY': 'YenxIAHqvrO7OHbNXvzAxEhthHCaitvnV9CALkQvvCc=',
+            # Empty string disables template validation (no templates in test env)
+            'OVPN_TEMPLATE_PATH': '',
         }
         with patch.dict(os.environ, prod_env):
             prod_app = create_app('production')

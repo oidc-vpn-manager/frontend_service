@@ -17,7 +17,6 @@ import jinja2
 from jinja2.sandbox import SandboxedEnvironment
 from flask import Flask
 from app.utils.tracing import trace
-from markupsafe import escape
 
 def load_config_templates(app: Flask, template_path) -> list:
     """
@@ -176,6 +175,86 @@ def find_best_template_match(app: Flask, user_group_memberships, template_collec
 
     return template_name, template_content
 
+def validate_config_templates(app: Flask) -> None:
+    """
+    Validate all OpenVPN configuration templates at application startup.
+
+    Renders every template from OVPN_TEMPLATE_PATH with a representative dummy
+    context so that undefined-variable errors (e.g. ``'protocol' is undefined``)
+    are caught before the pod accepts traffic, rather than at the moment a user
+    requests their first profile.
+
+    The dummy context covers every variable that the download and root routes
+    inject, including optionset-provided overrides.  Templates may use
+    ``| default(...)`` for optional variables not listed here; those will
+    continue to work because Jinja2 resolves them without touching the context.
+
+    Args:
+        app (Flask): Flask application instance.
+
+    Raises:
+        RuntimeError: If one or more templates fail to render, with all failures
+                      listed in a single message so operators can fix them all at once.
+    """
+    template_path = app.config.get('OVPN_TEMPLATE_PATH')
+    if not template_path:
+        app.logger.debug("OVPN_TEMPLATE_PATH not configured; skipping template validation.")
+        return
+
+    try:
+        templates = load_config_templates(app, template_path)
+    except FileNotFoundError as e:
+        raise RuntimeError(f"Template validation failed: {e}") from e
+
+    if not templates:
+        app.logger.warning("No OpenVPN templates found; skipping template validation.")
+        return
+
+    # Dummy context mirrors every variable injected by download.py and root.py.
+    # Use placeholder PEM strings so the sandbox renders them as plain text.
+    dummy_cert = "-----BEGIN CERTIFICATE-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END CERTIFICATE-----"
+    dummy_key  = "-----BEGIN PRIVATE KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PRIVATE KEY-----"
+    dummy_tls  = "-----BEGIN OpenVPN Static key V1-----\n0000000000000000\n-----END OpenVPN Static key V1-----"
+
+    dummy_context = {
+        # Identification
+        'template_name': 'validation-dummy',
+        'common_name': 'dummy@example.com',
+        'userinfo': {'sub': 'dummy', 'email': 'dummy@example.com', 'name': 'Dummy User'},
+        # Certificate material
+        'ca_cert_pem': dummy_cert,
+        'device_cert_pem': dummy_cert,
+        'device_key_pem': dummy_key,
+        # TLS-Crypt (both alias and canonical name)
+        'tls_crypt_key': dummy_tls,
+        'tlscrypt_key': dummy_tls,
+        'tlscrypt_version': 1,
+        # Network / protocol defaults
+        'protocol': 'udp',
+        'port': 1194,
+        # Option-set flags
+        'use_tcp': False,
+        'custom_port': None,
+        'enable_compression': False,
+        'mobile_settings': False,
+    }
+
+    failures = []
+    for template in templates:
+        try:
+            render_config_template(app, template['content'], **dummy_context)
+        except (ValueError, Exception) as exc:
+            failures.append(f"  {template['file_name']}: {exc}")
+
+    if failures:
+        failure_list = "\n".join(failures)
+        raise RuntimeError(
+            f"OpenVPN template validation failed for {len(failures)} template(s):\n{failure_list}"
+        )
+
+    app.logger.info(f"Template validation passed for {len(templates)} template(s).")
+
+
 def render_config_template(app: Flask, template_string, **kargs):
     """
     Securely render an OpenVPN configuration template with user-specific data.
@@ -230,9 +309,10 @@ def render_config_template(app: Flask, template_string, **kargs):
         >>> # Returns complete .ovpn file with embedded certificates
 
     Security Notes:
-        - All string values are HTML-escaped to prevent template injection
-        - Certificate and key data is preserved without escaping
-        - Template operations are restricted to safe subset
+        - autoescape is intentionally disabled: output is an OpenVPN config file,
+          not HTML, so HTML-escaping would corrupt certificate/key PEM data.
+        - Template code execution is restricted by SandboxedEnvironment.
+        - Context variable values are never evaluated as template code.
         - Rendered output is not logged (contains sensitive key material)
     """
     trace(
@@ -245,38 +325,19 @@ def render_config_template(app: Flask, template_string, **kargs):
         }
     )
 
-    # Create a sandboxed Jinja2 environment to prevent template injection attacks
+    # SandboxedEnvironment prevents arbitrary code execution in templates.
+    # autoescape=False is correct here: OpenVPN config files are not HTML, and
+    # enabling autoescape would HTML-encode certificate / key PEM data, producing
+    # an invalid profile that clients reject with "Invalid character" errors.
     sandbox_env = SandboxedEnvironment(
-        # Enable autoescape to prevent HTML injection
-        autoescape=True,
-        # Strict undefined variables (fail fast on template errors)
+        autoescape=False,
         undefined=jinja2.StrictUndefined
     )
-
-    # Sanitize all context variables to prevent template injection attacks
-    sanitized_kargs = {}
-    for key, value in kargs.items():
-        if isinstance(value, str):
-            # Escape HTML/template injection attempts in string values
-            # Note: Certificate and key PEM content is preserved safely
-            sanitized_kargs[key] = escape(value)
-        elif isinstance(value, dict):
-            # Recursively sanitize dictionary values (e.g., userinfo objects)
-            sanitized_dict = {}
-            for sub_key, sub_value in value.items():
-                if isinstance(sub_value, str):
-                    sanitized_dict[sub_key] = escape(sub_value)
-                else:
-                    sanitized_dict[sub_key] = sub_value
-            sanitized_kargs[key] = sanitized_dict
-        else:
-            # Preserve non-string values as-is (booleans, integers, etc.)
-            sanitized_kargs[key] = value
 
     try:
         # Use sandboxed environment for template creation
         final_template = sandbox_env.from_string(template_string)
-        rendered_template = final_template.render(**sanitized_kargs)
+        rendered_template = final_template.render(**kargs)
     except Exception as e:
         if "SecurityError" in str(type(e)) or "unsafe" in str(e).lower():
             app.logger.error(f"Template security violation detected: {e}")

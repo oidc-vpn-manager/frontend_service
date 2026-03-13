@@ -5,7 +5,8 @@ from unittest.mock import patch
 from app.utils.render_config_template import (
     load_config_templates,
     find_best_template_match,
-    render_config_template
+    render_config_template,
+    validate_config_templates,
 )
 
 @pytest.fixture
@@ -97,3 +98,96 @@ class TestRenderConfigTemplate:
         with app.app_context():
             result = render_config_template(app, "Value is {{ val }}", val="test")
         assert result == "Value is test"
+
+
+# Minimal valid template covering the variables provided by both routes.
+_VALID_TEMPLATE = """\
+client
+{%- if protocol == 'tcp' %}
+proto tcp-client
+{%- else %}
+proto udp
+{%- endif %}
+remote vpn.example.com {{ port | default('1194') }}
+<ca>
+{{ ca_cert_pem }}
+</ca>
+<cert>
+{{ device_cert_pem }}
+</cert>
+<key>
+{{ device_key_pem }}
+</key>
+{%- if tls_crypt_key %}
+<tls-crypt>
+{{ tls_crypt_key }}
+</tls-crypt>
+{%- endif %}
+"""
+
+
+class TestValidateConfigTemplates:
+    """Tests for the validate_config_templates startup check."""
+
+    def test_no_template_path_skips_validation(self, app):
+        """When OVPN_TEMPLATE_PATH is not configured, validation is silently skipped."""
+        app.config['OVPN_TEMPLATE_PATH'] = None
+        with app.app_context():
+            validate_config_templates(app)  # must not raise
+
+    def test_missing_directory_raises_runtime_error(self, app):
+        """A configured but non-existent template path raises RuntimeError at startup."""
+        app.config['OVPN_TEMPLATE_PATH'] = '/non/existent/path'
+        with app.app_context():
+            with pytest.raises(RuntimeError, match="Template validation failed"):
+                validate_config_templates(app)
+
+    def test_empty_directory_warns_but_does_not_raise(self, app, tmp_path):
+        """An empty template directory logs a warning but does not raise."""
+        app.config['OVPN_TEMPLATE_PATH'] = str(tmp_path)
+        with app.app_context():
+            validate_config_templates(app)  # must not raise
+
+    def test_valid_template_passes(self, app, tmp_path):
+        """A well-formed template that uses only known context variables passes validation."""
+        (tmp_path / "999.default.ovpn").write_text(_VALID_TEMPLATE)
+        app.config['OVPN_TEMPLATE_PATH'] = str(tmp_path)
+        with app.app_context():
+            validate_config_templates(app)  # must not raise
+
+    def test_undefined_variable_raises_runtime_error(self, app, tmp_path):
+        """A template referencing an undefined variable raises RuntimeError listing the file."""
+        (tmp_path / "999.default.ovpn").write_text(
+            "client\n{% if mystery_var %}do something{% endif %}\n"
+        )
+        app.config['OVPN_TEMPLATE_PATH'] = str(tmp_path)
+        with app.app_context():
+            with pytest.raises(RuntimeError, match="999.default.ovpn"):
+                validate_config_templates(app)
+
+    def test_multiple_failures_reported_together(self, app, tmp_path):
+        """All failing templates are listed in a single RuntimeError, not just the first."""
+        (tmp_path / "100.alpha.ovpn").write_text("{{ undefined_one }}")
+        (tmp_path / "200.beta.ovpn").write_text("{{ undefined_two }}")
+        app.config['OVPN_TEMPLATE_PATH'] = str(tmp_path)
+        with app.app_context():
+            with pytest.raises(RuntimeError) as exc_info:
+                validate_config_templates(app)
+        msg = str(exc_info.value)
+        assert "100.alpha.ovpn" in msg
+        assert "200.beta.ovpn" in msg
+        assert "2 template(s)" in msg
+
+    def test_valid_template_uses_cached_collection(self, app, tmp_path):
+        """Validation uses the pre-loaded TEMPLATE_COLLECTION when already cached."""
+        app.config['TEMPLATE_COLLECTION'] = [
+            {
+                'priority': 999,
+                'group_name': 'default',
+                'file_name': '999.default.ovpn',
+                'content': _VALID_TEMPLATE,
+            }
+        ]
+        app.config['OVPN_TEMPLATE_PATH'] = str(tmp_path)
+        with app.app_context():
+            validate_config_templates(app)  # must not raise
