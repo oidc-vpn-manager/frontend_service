@@ -347,7 +347,6 @@ class TestDownloadRoute:
             response = client.get(f'/download?token={valid_token.token}')
             assert response.status_code == 200
             assert response.headers['Content-Type'] == 'application/x-openvpn-profile'
-            assert 'attachment' in response.headers['Content-Disposition']
             assert response.data == b'fake-openvpn-config'
             
             # Token should be marked as collected
@@ -714,15 +713,17 @@ class TestDownloadRouteGroupsAndSessionToken:
     @patch('app.routes.download.find_best_template_match')
     @patch('app.routes.download.render_config_template')
     @patch('app.routes.download.process_tls_crypt_key')
-    def test_download_returns_vpn_session_token_header(
+    def test_download_does_not_return_vpn_session_token_header(
             self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
             client, app_with_db):
         """
-        Tests that a successful download returns the VPN-Session-Token response
-        header containing the token UUID.
+        Tests that a successful download does NOT include a VPN-Session-Token
+        response header.
 
-        OpenVPN Connect stores this token and sends it on subsequent HEAD
-        /openvpn-api/profile requests to check whether the profile needs renewal.
+        OpenVPN Connect on macOS treats header values as base64 strings; the
+        UUID token contains '-' which is not valid base64, causing profile import
+        to fail with "Invalid character".  The freshness-check feature is
+        intentionally sacrificed for compatibility.
         """
         mock_key = MagicMock()
         mock_key.private_bytes.return_value = b'key'
@@ -750,8 +751,7 @@ class TestDownloadRouteGroupsAndSessionToken:
 
             response = client.get(f'/download?token={token_uuid}')
             assert response.status_code == 200
-            assert 'VPN-Session-Token' in response.headers
-            assert response.headers['VPN-Session-Token'] == token_uuid
+            assert 'VPN-Session-Token' not in response.headers
 
     @patch('app.routes.download.request_signed_certificate')
     @patch('app.routes.download.generate_key_and_csr')
@@ -920,13 +920,12 @@ class TestDownloadRouteGroupsAndSessionToken:
     @patch('app.routes.download.find_best_template_match')
     @patch('app.routes.download.render_config_template')
     @patch('app.routes.download.process_tls_crypt_key')
-    def test_download_vpn_session_token_header_contains_only_uuid(
+    def test_download_response_headers_leak_no_pii(
             self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
             client, app_with_db):
         """
-        OWASP API3 (Excessive Data Exposure): Verifies that the VPN-Session-Token
-        response header contains only the token UUID and no other user data
-        (no email, groups, sub, or PII is leaked in the header).
+        OWASP API3 (Excessive Data Exposure): Verifies that no response headers
+        leak user PII (email, groups, sub, token UUID).
         """
         mock_key = MagicMock()
         mock_key.private_bytes.return_value = b'key'
@@ -956,11 +955,11 @@ class TestDownloadRouteGroupsAndSessionToken:
             response = client.get(f'/download?token={token_uuid}')
             assert response.status_code == 200
 
-            session_token_header = response.headers['VPN-Session-Token']
-            # Must be exactly the UUID — no PII
-            assert session_token_header == token_uuid
-            assert 'sensitive' not in session_token_header
-            assert 'engineering' not in session_token_header
+            all_header_values = ' '.join(response.headers.values())
+            assert 'sensitive-user-sub' not in all_header_values
+            assert 'sensitive@example.com' not in all_header_values
+            assert 'engineering' not in all_header_values
+            assert token_uuid not in all_header_values
 
 
 class TestRetainGeneratedTemplate:
