@@ -961,3 +961,83 @@ class TestDownloadRouteGroupsAndSessionToken:
             assert session_token_header == token_uuid
             assert 'sensitive' not in session_token_header
             assert 'engineering' not in session_token_header
+
+
+class TestRetainGeneratedTemplate:
+    """Tests for RETAIN_GENERATED_TEMPLATE debug feature."""
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_retain_generated_template_writes_file(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db, monkeypatch, tmp_path):
+        """When RETAIN_GENERATED_TEMPLATE=1, the rendered profile is written to a temp file."""
+        import tempfile
+        monkeypatch.setenv('RETAIN_GENERATED_TEMPLATE', '1')
+        monkeypatch.setattr(tempfile, 'gettempdir', lambda: str(tmp_path))
+
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='u@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = 'fake-cert'
+        mock_template.return_value = ('Default', 'content')
+        mock_render.return_value = 'debug-config-content'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token_uuid = str(uuid.uuid4())
+            token = DownloadToken(user='u', cn='u@example.com', requester_ip='127.0.0.1', optionset_used='')
+            token.token = token_uuid
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+
+            response = client.get(f'/download?token={token_uuid}')
+            assert response.status_code == 200
+
+        debug_file = tmp_path / f'ovpn_debug_{token_uuid}.ovpn'
+        assert debug_file.exists()
+        assert debug_file.read_text(encoding='utf-8') == 'debug-config-content'
+
+    @patch('app.routes.download.request_signed_certificate')
+    @patch('app.routes.download.generate_key_and_csr')
+    @patch('app.routes.download.find_best_template_match')
+    @patch('app.routes.download.render_config_template')
+    @patch('app.routes.download.process_tls_crypt_key')
+    def test_retain_generated_template_off_by_default(
+            self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
+            client, app_with_db, monkeypatch, tmp_path):
+        """When RETAIN_GENERATED_TEMPLATE is not set, no debug file is written."""
+        import tempfile
+        monkeypatch.delenv('RETAIN_GENERATED_TEMPLATE', raising=False)
+        monkeypatch.setattr(tempfile, 'gettempdir', lambda: str(tmp_path))
+
+        mock_key = MagicMock()
+        mock_key.private_bytes.return_value = b'key'
+        mock_csr_obj = MagicMock()
+        mock_csr_obj.subject.get_attributes_for_oid.return_value = [MagicMock(value='u@example.com')]
+        mock_csr_obj.public_bytes.return_value = b'csr'
+        mock_csr.return_value = (mock_key, mock_csr_obj)
+        mock_sign.return_value = 'fake-cert'
+        mock_template.return_value = ('Default', 'content')
+        mock_render.return_value = 'config'
+        mock_tls.return_value = ('v1', 'tls-key')
+
+        with app_with_db.app_context():
+            token_uuid = str(uuid.uuid4())
+            token = DownloadToken(user='u', cn='u@example.com', requester_ip='127.0.0.1', optionset_used='')
+            token.token = token_uuid
+            from app.extensions import db
+            db.session.add(token)
+            db.session.commit()
+
+            response = client.get(f'/download?token={token_uuid}')
+            assert response.status_code == 200
+
+        assert not any(tmp_path.iterdir())

@@ -13,6 +13,9 @@ Returns a VPN-Session-Token response header containing the token UUID so that
 OpenVPN Connect can check profile freshness via HEAD /openvpn-api/profile.
 """
 
+import os
+import tempfile
+
 from flask import Blueprint, request, current_app, Response, jsonify
 from app.utils.tracing import trace
 from app.models import DownloadToken
@@ -171,6 +174,17 @@ def download_profile(token_id=None):
         db.session.commit()
 
         current_app.logger.info(f"Profile generated successfully for {user_id}")
+
+        # Debug: if RETAIN_GENERATED_TEMPLATE=1, write the rendered profile to a
+        # temp file so it can be inspected (e.g. for encoding issues).
+        if os.environ.get('RETAIN_GENERATED_TEMPLATE', '0') == '1':
+            tmp_path = os.path.join(
+                tempfile.gettempdir(),
+                f"ovpn_debug_{download_token.token}.ovpn"
+            )
+            with open(tmp_path, 'w', encoding='utf-8') as fh:
+                fh.write(final_config)
+            current_app.logger.info(f"DEBUG: retained generated profile at {tmp_path}")
 
         # 10. Return the profile with VPN-Session-Token so OpenVPN Connect can
         # check freshness via HEAD /openvpn-api/profile without re-authenticating.
