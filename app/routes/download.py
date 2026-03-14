@@ -196,8 +196,14 @@ def download_profile(token_id=None):
             final_config,
             mimetype="application/x-openvpn-profile",
             headers={
-                "Content-disposition": f"attachment; filename={download_filename}",
+                "Content-Disposition": f"attachment; filename={download_filename}",
                 "VPN-Session-Token": download_token.token,
+                # Prevent nginx/proxies from gzip-compressing the profile.
+                # OpenVPN Connect's internal HTTP client may not decompress
+                # Content-Encoding: gzip, causing it to try to parse the
+                # compressed binary as base64 → "invalid encoding".
+                "Cache-Control": "no-store",
+                "Content-Encoding": "identity",
             }
         )
 
