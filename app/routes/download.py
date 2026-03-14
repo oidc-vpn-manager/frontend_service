@@ -130,7 +130,10 @@ def download_profile(token_id=None):
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
             ).decode('utf-8').strip(),
-            'tlscrypt_key': client_tls_crypt_key,
+            # Strip tls-crypt key to prevent trailing newline creating a blank
+            # line inside the <tls-crypt>/<tls-crypt-v2> inline block, which
+            # causes OpenVPN Connect to fail with "invalid encoding".
+            'tlscrypt_key': client_tls_crypt_key.strip() if client_tls_crypt_key else client_tls_crypt_key,
             'tlscrypt_version': tls_crypt_version,
             # Default template variables to prevent undefined errors
             'protocol': 'udp',
@@ -139,7 +142,7 @@ def download_profile(token_id=None):
             'enable_compression': False,
             'mobile_settings': False,
             # Template variable alias for consistency
-            'tls_crypt_key': client_tls_crypt_key,
+            'tls_crypt_key': client_tls_crypt_key.strip() if client_tls_crypt_key else client_tls_crypt_key,
         }
 
         # 6. Apply settings from optionset if specified
