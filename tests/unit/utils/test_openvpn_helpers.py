@@ -155,6 +155,43 @@ somedata
         with pytest.raises(ValueError, match="Unrecognized TLS-Crypt key format."):
             process_tls_crypt_key(unknown_key)
 
+    @patch('app.utils.openvpn_helpers.trace')
+    def test_trace_redacts_master_key(self, mock_trace, app):
+        """VULN-12: trace() must not log the full plaintext TLS-Crypt master key.
+
+        The logged value must be redacted, showing only the first 15 and last 15
+        characters of the key with '[REDACTED]' in between, so that the secret
+        key material is never written to trace logs.
+        """
+        process_tls_crypt_key(TLS_CRYPT_V1_KEY)
+
+        assert mock_trace.called
+        logged_data = mock_trace.call_args[0][2]
+        logged_key = logged_data['master_key_pem']
+
+        assert '[REDACTED]' in logged_key
+        # Full key must not be logged verbatim
+        assert logged_key != TLS_CRYPT_V1_KEY
+        # First 15 and last 15 chars of the original key must be present
+        assert TLS_CRYPT_V1_KEY[:15] in logged_key
+        assert TLS_CRYPT_V1_KEY[-15:] in logged_key
+
+    @patch('app.utils.openvpn_helpers.trace')
+    def test_trace_handles_none_key_without_error(self, mock_trace, app):
+        """VULN-12: trace redaction must handle None key gracefully.
+
+        When no TLS-Crypt key is configured the function should still return
+        normally without raising an error during redaction.
+        """
+        version, client_key = process_tls_crypt_key(None)
+
+        assert version is None
+        assert client_key is None
+        assert mock_trace.called
+        logged_data = mock_trace.call_args[0][2]
+        # None should be logged as-is (nothing to redact)
+        assert logged_data['master_key_pem'] is None
+
 
 class TestTemplateRendering:
     """

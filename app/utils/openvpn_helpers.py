@@ -115,11 +115,16 @@ def process_tls_crypt_key(master_key_pem: str):
         >>> assert version == 2
         >>> assert "tls-crypt-v2 client key" in client_key
     """
+    redacted = (
+        f"{master_key_pem[:15]}...[REDACTED]...{master_key_pem[-15:]}"
+        if master_key_pem
+        else master_key_pem
+    )
     trace(
         current_app,
         'utils.openvpn_helpers.process_tls_crypt_key',
         {
-            'master_key_pem': master_key_pem
+            'master_key_pem': redacted
         }
     )
     if not master_key_pem:
