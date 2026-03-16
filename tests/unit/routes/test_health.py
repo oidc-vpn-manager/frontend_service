@@ -28,6 +28,7 @@ class TestHealthRoute:
             assert data['status'] == 'healthy'
             assert data['service'] == 'frontend'
             assert data['database'] == 'connected'
+            assert 'version' not in data
 
     @patch('app.routes.health.db')
     def test_health_endpoint_content_type(self, mock_db, app):
@@ -64,4 +65,5 @@ class TestHealthRoute:
             data = response.get_json()
             assert data['status'] == 'unhealthy'
             assert data['database'] == 'disconnected'
+            assert 'version' not in data
 
