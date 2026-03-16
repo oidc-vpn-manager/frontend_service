@@ -96,7 +96,6 @@
             
             <form id="userRevocationForm" method="post" action="">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
-                <!-- Debug: User CSRF token = {{ csrf_token }} -->
                 <div style="margin: 15px 0;">
                     <label for="userRevocationReason">Revocation Reason:</label>
                     <select id="userRevocationReason" data-testid="revocation-reason" name="reason" required style="width: 100%; padding: 8px; margin-top: 5px;">
