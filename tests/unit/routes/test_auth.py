@@ -267,15 +267,59 @@ def test_callback_comma_separated_groups_assignment(app, mock_oauth):
     """
     # Mock userinfo with comma-separated groups string
     mock_oauth.oidc.userinfo.return_value = {
-        'sub': '12345', 
+        'sub': '12345',
         'name': 'Multi Group User',
         'groups': 'users, admins, auditors'  # Comma-separated string
     }
-    
+
     client = app.test_client()
     response = client.get('/auth/callback')
-    
+
     with client.session_transaction() as sess:
         assert sess['user']['is_admin'] == True
         assert sess['user']['is_auditor'] == True
         assert sess['user']['is_system_admin'] == False
+
+
+class TestVuln01OpenRedirect:
+    """VULN-01: The ?next= parameter must reject protocol-relative URLs like //evil.com.
+
+    The previous check `startswith('/')` accepted `//evil.com` because it starts
+    with `/`. Browsers treat `//host/path` as protocol-relative and follow it to
+    an external domain after the OIDC login completes.
+    """
+
+    def test_double_slash_host_rejected(self, app, mock_oauth):
+        """//evil.com must not be stored as next_url in the session."""
+        client = app.test_client()
+        client.get('/auth/login?next=//evil.com')
+        with client.session_transaction() as sess:
+            assert sess.get('next_url') != '//evil.com'
+
+    def test_double_slash_host_with_path_rejected(self, app, mock_oauth):
+        """//attacker.com/path must not be stored as next_url in the session."""
+        client = app.test_client()
+        client.get('/auth/login?next=//attacker.com/path')
+        with client.session_transaction() as sess:
+            assert sess.get('next_url') != '//attacker.com/path'
+
+    def test_absolute_http_url_rejected(self, app, mock_oauth):
+        """http://evil.com must not be stored as next_url in the session."""
+        client = app.test_client()
+        client.get('/auth/login?next=http://evil.com')
+        with client.session_transaction() as sess:
+            assert sess.get('next_url') != 'http://evil.com'
+
+    def test_relative_path_accepted(self, app, mock_oauth):
+        """/profile is a safe relative URL and must be stored in the session."""
+        client = app.test_client()
+        client.get('/auth/login?next=/profile')
+        with client.session_transaction() as sess:
+            assert sess.get('next_url') == '/profile'
+
+    def test_relative_path_with_segments_accepted(self, app, mock_oauth):
+        """/profile/certificates is a safe relative URL and must be stored."""
+        client = app.test_client()
+        client.get('/auth/login?next=/profile/certificates')
+        with client.session_transaction() as sess:
+            assert sess.get('next_url') == '/profile/certificates'

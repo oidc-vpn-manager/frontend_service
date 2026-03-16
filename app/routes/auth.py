@@ -58,7 +58,7 @@ def login():
     # Validate next_url to prevent open redirect attacks
     # Note: Flask provides built-in protection against URL corruption and malformed URLs
     if next_url:
-        if next_url.startswith('/'):
+        if next_url.startswith('/') and not next_url.startswith('//'):
             # Relative URL is safe - limit length for security
             next_url = next_url[:500]
         elif next_url.startswith(request.url_root):
@@ -69,7 +69,7 @@ def login():
             current_app.logger.warning(f"Rejected external redirect URL: {next_url}")
             next_url = None
 
-    if next_url and (next_url.startswith('/') or next_url.startswith(request.url_root)):
+    if next_url and ((next_url.startswith('/') and not next_url.startswith('//')) or next_url.startswith(request.url_root)):
         # Only store safe URLs from same origin
         session['next_url'] = next_url
         current_app.logger.info(f"Storing destination URL for post-auth redirect: {next_url}")
