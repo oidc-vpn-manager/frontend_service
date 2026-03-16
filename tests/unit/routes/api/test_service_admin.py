@@ -2533,7 +2533,12 @@ class TestServiceAdminHealthCheck:
                 assert 'timestamp' in data
 
     def test_health_check_database_failure(self, service_admin_client):
-        """Test health check with database connection failure."""
+        """Test health check with database connection failure.
+
+        VULN-11: The unhealthy response must not include an 'error' field.
+        Raw exception messages (e.g. SQLAlchemy errors) disclose DB internals
+        to unauthenticated callers of this endpoint.
+        """
         with patch('app.routes.api.service_admin.db.session') as mock_session:
             mock_session.execute.side_effect = Exception("Database connection failed")
 
@@ -2542,11 +2547,14 @@ class TestServiceAdminHealthCheck:
             assert response.status_code == 503
             data = response.get_json()
             assert data['status'] == 'unhealthy'
-            assert 'Database connection failed' in data['error']
+            assert 'error' not in data
             assert 'timestamp' in data
 
     def test_health_check_ct_service_failure(self, service_admin_client):
-        """Test health check with CT service failure."""
+        """Test health check with CT service failure.
+
+        VULN-11: The unhealthy response must not include an 'error' field.
+        """
         with patch('app.routes.api.service_admin.db.session') as mock_session:
             mock_session.execute.return_value = None
 
@@ -2558,7 +2566,7 @@ class TestServiceAdminHealthCheck:
                 assert response.status_code == 503
                 data = response.get_json()
                 assert data['status'] == 'unhealthy'
-                assert 'CT service unavailable' in data['error']
+                assert 'error' not in data
                 assert 'timestamp' in data
 
     def test_health_check_no_authentication_required(self, admin_client):

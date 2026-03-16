@@ -18,6 +18,7 @@ from app.models.presharedkey import PreSharedKey
 from app.extensions import db, csrf
 import uuid
 from datetime import datetime, timezone
+from sqlalchemy import text
 
 bp = Blueprint('service_admin', __name__, url_prefix='/api')
 csrf.exempt(bp)
@@ -453,7 +454,7 @@ def health_check():
 
     try:
         # Test database connectivity
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
 
         # Test CT service connectivity
         ct_client = get_certtransparency_client()
@@ -470,6 +471,5 @@ def health_check():
         current_app.logger.error(f"Health check failed: {e}")
         return jsonify({
             'status': 'unhealthy',
-            'error': str(e),
             'timestamp': datetime.now(timezone.utc).isoformat()
         }), 503
