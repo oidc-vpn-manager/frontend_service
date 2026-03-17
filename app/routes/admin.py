@@ -586,3 +586,92 @@ def bulk_revoke_computer_certificates():
         return render_template('admin/bulk_revoke_computer_certificates.html', computer_psks=computer_psks)
 
 
+@bp.route('/api-tokens')
+@admin_service_only
+@admin_required
+def list_api_tokens():
+    """List all API tokens for M2M service access."""
+    trace(current_app, 'routes.admin.list_api_tokens')
+    from app.models.apitoken import ApiToken
+    tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
+    return render_template('admin/api_token_list.html', tokens=tokens)
+
+
+@bp.route('/api-tokens/new', methods=['GET', 'POST'])
+@admin_service_only
+@admin_required
+def new_api_token():
+    """Create a new API token for M2M service access."""
+    trace(current_app, 'routes.admin.new_api_token')
+
+    if request.method == 'GET':
+        return render_template('admin/api_token_new.html')
+
+    description = request.form.get('description', '').strip()
+    expires_days = request.form.get('expires_days', '').strip()
+
+    if not description:
+        flash('Description is required.', 'error')
+        return render_template('admin/api_token_new.html')
+
+    try:
+        expires_days_int = int(expires_days)
+        if expires_days_int < 1 or expires_days_int > 3650:
+            raise ValueError
+    except (ValueError, TypeError):
+        flash('Expiry must be between 1 and 3650 days.', 'error')
+        return render_template('admin/api_token_new.html')
+
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    from app.models.apitoken import ApiToken
+
+    plaintext = str(uuid.uuid4())
+    admin_user = session.get('user', {})
+    created_by = admin_user.get('sub', 'unknown')
+
+    tok = ApiToken.create(
+        plaintext_key=plaintext,
+        description=description,
+        created_by=created_by,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=expires_days_int),
+    )
+    db.session.add(tok)
+    db.session.commit()
+
+    from app.utils.security_logging import security_logger
+    security_logger.log_psk_created(
+        psk_type='api_token',
+        description=description,
+        template_set='n/a',
+        created_by=created_by,
+        expires_at=tok.expires_at.isoformat(),
+    )
+
+    response = make_response(render_template(
+        'admin/api_token_created.html',
+        plaintext_token=plaintext,
+        description=description,
+        token_id=tok.id,
+    ))
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+
+@bp.route('/api-tokens/<int:token_id>/revoke', methods=['POST'])
+@admin_service_only
+@admin_required
+def revoke_api_token(token_id):
+    """Revoke an API token."""
+    trace(current_app, 'routes.admin.revoke_api_token')
+    from app.models.apitoken import ApiToken
+
+    tok = ApiToken.query.get_or_404(token_id)
+    tok.revoke()
+    db.session.commit()
+
+    flash(f'API token "{tok.description}" has been revoked.', 'success')
+    return redirect(url_for('admin.list_api_tokens'))
+
+

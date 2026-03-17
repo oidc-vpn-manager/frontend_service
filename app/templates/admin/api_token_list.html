@@ -1,0 +1,73 @@
+{# This template outputs HTML. Variables are rendered in HTML attribute/text context only;
+   Jinja2 HTML autoescaping provides sufficient protection. No JavaScript string context
+   embedding is present in this template. #}
+{% extends "base.html" %}
+
+{% block title %}API Tokens - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>API Tokens</h1>
+    <p>API tokens authenticate M2M service access to the service-admin API endpoints.</p>
+
+    <div><a href="{{ url_for('admin.new_api_token') }}" class="button">Create New API Token</a></div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th>Created By</th>
+                <th>Created</th>
+                <th>Last Used</th>
+                <th>Expires</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tok in tokens %}
+                <tr>
+                    <td>{{ tok.description }}</td>
+                    <td>{{ tok.created_by }}</td>
+                    <td>{{ tok.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+                    <td>
+                        {% if tok.last_used_at %}
+                            {{ tok.last_used_at.strftime('%Y-%m-%d %H:%M') }} UTC
+                        {% else %}
+                            <span class="never-used">Never used</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ tok.expires_at.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        {% if tok.is_revoked %}
+                            <span class="status-inactive">Revoked</span>
+                        {% elif not tok.is_valid() %}
+                            <span class="status-inactive">Expired</span>
+                        {% else %}
+                            <span class="status-active">Active</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not tok.is_revoked %}
+                        <form action="{{ url_for('admin.revoke_api_token', token_id=tok.id) }}" method="post" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                            <button type="submit" class="button revoke-btn" style="background: #dc3545;">Revoke</button>
+                        </form>
+                        {% else %}
+                            &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="7">No API tokens have been created yet.</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <style>
+        .never-used { color: #6c757d; font-style: italic; font-size: 0.875em; }
+        .status-active { color: #155724; }
+        .status-inactive { color: #721c24; }
+    </style>
+{% endblock %}

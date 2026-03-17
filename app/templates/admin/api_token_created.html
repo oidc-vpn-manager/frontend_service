@@ -1,0 +1,33 @@
+{# This template outputs HTML. Variables are rendered in HTML attribute/text context only;
+   Jinja2 HTML autoescaping provides sufficient protection. No JavaScript string context
+   embedding is present in this template. #}
+{% extends "base.html" %}
+
+{% block title %}API Token Created - {{ current_app.config.get('SITE_NAME') }}{% endblock %}
+
+{% block content %}
+    <h1>API Token Created Successfully</h1>
+    <div class="alert alert-success">
+        <p><strong>Token created</strong> for "{{ description }}".</p>
+    </div>
+
+    <div class="security-warning" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 20px; margin: 20px 0;">
+        <h3 style="color: #856404; margin-top: 0;">⚠️ Important Security Notice</h3>
+        <p style="color: #856404;">
+            <strong>This is the ONLY time you will see this token.</strong>
+            Copy it now. It cannot be retrieved after you leave this page.
+        </p>
+
+        <p>Use this token in the <code>Authorization</code> header of API requests:</p>
+        <div class="command-block">
+            <code id="authHeader">Authorization: Bearer {{ plaintext_token }}</code>
+            <button type="button" class="copy-button" data-target-id="authHeader">Copy</button>
+        </div>
+    </div>
+
+    <div style="margin-top: 30px; text-align: center;">
+        <a href="{{ url_for('admin.list_api_tokens') }}" class="button">Return to API Token Management</a>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}
