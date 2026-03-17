@@ -152,7 +152,11 @@ def index():
             return Response(
                 final_config,
                 mimetype="application/x-openvpn-profile",
-                headers={"Content-disposition": f"attachment; filename={download_filename}"}
+                headers={
+                    "Content-disposition": f"attachment; filename={download_filename}",
+                    "Cache-Control": "no-store",
+                    "Pragma": "no-cache",
+                }
             )
 
         except (SigningServiceError, ValueError) as e: # pragma: no cover

@@ -426,7 +426,7 @@ def create_computer_psk():
             expires_at=expires_at.isoformat() if expires_at else None
         )
 
-        return jsonify({
+        response = jsonify({
             'id': psk.id,
             'key': psk_key,  # Only returned during creation
             'key_truncated': psk.key_truncated,
@@ -436,7 +436,11 @@ def create_computer_psk():
             'expires_at': psk.expires_at.replace(tzinfo=timezone.utc).isoformat() if psk.expires_at else None,
             'created_at': psk.created_at.replace(tzinfo=timezone.utc).isoformat(),
             'is_enabled': psk.is_enabled
-        }), 201
+        })
+        response.status_code = 201
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['Pragma'] = 'no-cache'
+        return response
 
     except Exception as e:
         db.session.rollback()

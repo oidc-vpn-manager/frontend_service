@@ -2,7 +2,7 @@
 Admin routes for managing PSKs and other settings.
 """
 
-from flask import Blueprint, flash, redirect, url_for, abort, request, current_app, jsonify, session
+from flask import Blueprint, flash, redirect, url_for, abort, request, current_app, jsonify, session, make_response
 from app.utils.tracing import trace
 from app.utils.decorators import admin_required, admin_service_only
 from app.utils import render_template
@@ -80,13 +80,16 @@ def new_psk():
         db.session.commit()
 
         # Return the PSK creation success page with the plaintext PSK to show once
-        return render_template('admin/psk_created.html',
+        response = make_response(render_template('admin/psk_created.html',
                              psk=plaintext_psk,
                              description=new_key.description,
                              template_set=new_key.template_set,
                              psk_type=new_key.psk_type,
                              psk_id=new_key.id,
-                             server_url=request.url_root)
+                             server_url=request.url_root))
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['Pragma'] = 'no-cache'
+        return response
 
     return render_template('admin/psk_new.html', form=form)
 
