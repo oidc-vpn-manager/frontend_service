@@ -32,7 +32,7 @@
                     <div class="d-flex justify-content-between align-items-center py-1">
                         <code class="text-primary">{{ psk.description }}</code>
                         <button type="button" class="btn btn-sm btn-outline-primary"
-                                onclick="document.getElementById('psk_filter').value='{{ psk.description }}'">
+                                onclick="document.getElementById('psk_filter').value={{ psk.description | tojson }}">
                             Use This
                         </button>
                     </div>

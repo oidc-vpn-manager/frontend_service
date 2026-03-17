@@ -809,3 +809,76 @@ class TestBulkRevokeComputerCertificates:
         # Should abort with 404 when certificate is None (line 195)
         assert response.status_code == 404
         mock_client.get_certificate_by_fingerprint.assert_called_once_with(valid_fingerprint, include_pem=True)
+
+
+class TestVuln07BulkRevokeXss:
+    """VULN-07: PSK description in bulk revoke onclick must use |tojson.
+
+    Without |tojson, a PSK description containing a single quote (') breaks
+    out of the onclick string literal and allows arbitrary JS injection.
+    """
+
+    def test_psk_description_with_single_quote_safe(self, admin_client, app):
+        """Single quote in PSK description must not produce an onclick injection.
+
+        The vulnerable pattern is onclick="...value='evil&#39;quote'": Jinja2
+        HTML-escapes ' to &#39;, but the browser decodes &#39; back to ' before
+        executing the JS event handler, breaking out of the string literal.
+        The fix (|tojson) must not produce this HTML-entity-in-single-quoted-JS pattern.
+        """
+        with app.app_context():
+            from app.models.presharedkey import PreSharedKey
+            from app.extensions import db
+
+            psk = PreSharedKey(description="evil'quote", psk_type="computer", key="xss-test-key-1")
+            psk.is_enabled = True
+            db.session.add(psk)
+            db.session.commit()
+
+        response = admin_client.get('/admin/computer-certificates/bulk-revoke')
+
+        assert response.status_code == 200
+        # The HTML-entity-in-single-quoted-JS pattern is the XSS vector;
+        # &#39; inside a single-quoted onclick string is decoded by the browser to ',
+        # breaking out of the string.  This pattern must NOT appear after the fix.
+        assert b"value='evil&#39;quote'" not in response.data
+        # The description content must still be present (rendered safely elsewhere)
+        assert b'evil' in response.data
+
+    def test_psk_description_with_double_quote_safe(self, admin_client, app):
+        """Double quote in PSK description must be JSON-encoded in the onclick handler."""
+        with app.app_context():
+            from app.models.presharedkey import PreSharedKey
+            from app.extensions import db
+
+            psk = PreSharedKey(description='server"name', psk_type="computer", key="xss-test-key-2")
+            psk.is_enabled = True
+            db.session.add(psk)
+            db.session.commit()
+
+        response = admin_client.get('/admin/computer-certificates/bulk-revoke')
+
+        assert response.status_code == 200
+        # The raw double-quote inside a single-quoted onclick string is an XSS vector.
+        # The vulnerable pattern is value='server&quot;name' — &quot; is decoded to " by
+        # the browser before JS execution, which can be used to inject JS attributes.
+        assert b"value='server&quot;name'" not in response.data
+
+    def test_psk_description_with_script_tag_safe(self, admin_client, app):
+        """<script> in PSK description must not appear unescaped in onclick."""
+        with app.app_context():
+            from app.models.presharedkey import PreSharedKey
+            from app.extensions import db
+
+            psk = PreSharedKey(description="x<script>alert(1)</script>", psk_type="computer", key="xss-test-key-3")
+            psk.is_enabled = True
+            db.session.add(psk)
+            db.session.commit()
+
+        response = admin_client.get('/admin/computer-certificates/bulk-revoke')
+
+        assert response.status_code == 200
+        # The vulnerable pattern: &lt;script&gt; inside a single-quoted onclick string.
+        # Jinja2 HTML-escapes < to &lt;, but the browser decodes &lt; back to < before
+        # executing the JS handler, allowing tag injection.  This must NOT appear.
+        assert b"value='x&lt;script&gt;" not in response.data
