@@ -27,6 +27,10 @@ def app():
         'ADMIN_URL_BASE': ''  # Ensure admin service routes are available
     })
 
+    app.config.update({'RATELIMIT_ENABLED': False})
+    from app.extensions import limiter
+    limiter.init_app(app)
+
     # Create database tables
     with app.app_context():
         db.create_all()
@@ -41,60 +45,54 @@ def client(app):
 
 
 @pytest.fixture
-def service_admin_client(app):
-    """Creates a test client with service admin session configured."""
-    client = app.test_client()
+def api_token_client(app):
+    """Creates a test client authenticated via API token (VULN-03 fix)."""
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    from app.models.apitoken import ApiToken
 
-    # Set up service admin session
-    with client.session_transaction() as sess:
-        sess['user'] = {
-            'sub': 'service-admin@example.com',
-            'email': 'service-admin@example.com',
-            'name': 'Service Admin',
-            'is_system_admin': True,
-            'is_admin': False,
-            'is_auditor': False
-        }
+    plaintext = str(uuid.uuid4())
+    with app.app_context():
+        tok = ApiToken.create(
+            plaintext_key=plaintext,
+            description='test-token',
+            created_by='api-test@example.com',
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+        db.session.add(tok)
+        db.session.commit()
 
-    return client
+    class _AuthClient:
+        """Thin wrapper that injects the Authorization header on every request."""
+        def __init__(self, client, token):
+            self._c = client
+            self._h = {'Authorization': f'Bearer {token}'}
 
+        def _inject(self, kwargs):
+            h = dict(self._h)
+            h.update(kwargs.pop('headers', {}) or {})
+            kwargs['headers'] = h
+            return kwargs
+
+        def get(self, *a, **kw):    return self._c.get(*a, **self._inject(kw))
+        def post(self, *a, **kw):   return self._c.post(*a, **self._inject(kw))
+        def put(self, *a, **kw):    return self._c.put(*a, **self._inject(kw))
+        def delete(self, *a, **kw): return self._c.delete(*a, **self._inject(kw))
+        def session_transaction(self): return self._c.session_transaction()
+
+    return _AuthClient(app.test_client(), plaintext)
+
+
+# Keep backwards-compatible aliases so test methods that previously used
+# role-specific fixtures still work — all roles now authenticate via API token.
+@pytest.fixture
+def service_admin_client(api_token_client): return api_token_client
 
 @pytest.fixture
-def auditor_client(app):
-    """Creates a test client with auditor session configured."""
-    client = app.test_client()
-
-    # Set up auditor session
-    with client.session_transaction() as sess:
-        sess['user'] = {
-            'sub': 'auditor@example.com',
-            'email': 'auditor@example.com',
-            'name': 'Security Auditor',
-            'is_system_admin': False,
-            'is_admin': False,
-            'is_auditor': True
-        }
-
-    return client
-
+def auditor_client(api_token_client): return api_token_client
 
 @pytest.fixture
-def admin_client(app):
-    """Creates a test client with admin session configured."""
-    client = app.test_client()
-
-    # Set up admin session
-    with client.session_transaction() as sess:
-        sess['user'] = {
-            'sub': 'admin@example.com',
-            'email': 'admin@example.com',
-            'name': 'Admin User',
-            'is_system_admin': False,
-            'is_admin': True,
-            'is_auditor': False
-        }
-
-    return client
+def admin_client(api_token_client): return api_token_client
 
 
 class TestListAllCertificates:
@@ -103,7 +101,7 @@ class TestListAllCertificates:
     def test_list_all_certificates_requires_auth(self, client):
         """Test that list_all_certificates requires authentication."""
         response = client.get('/api/certificates')
-        assert response.status_code == 302  # Redirect to login
+        assert response.status_code == 401  # No valid API token
 
     def test_list_all_certificates_requires_service_admin_or_auditor(self, app):
         """Test that list_all_certificates requires service admin or auditor privileges."""
@@ -121,7 +119,7 @@ class TestListAllCertificates:
             }
 
         response = client.get('/api/certificates')
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
     @patch('app.utils.security_logging.security_logger.log_data_access')
@@ -158,7 +156,7 @@ class TestListAllCertificates:
         mock_log_access.assert_called_once_with(
             data_type="certificate_list",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'query_params': {},
                 'result_count': 2
@@ -189,7 +187,7 @@ class TestListAllCertificates:
         mock_log_access.assert_called_once_with(
             data_type="certificate_list",
             access_type="query",
-            user_id='auditor@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'query_params': {},
                 'result_count': 0
@@ -336,7 +334,7 @@ class TestListAllCertificates:
         mock_log_access.assert_called_once_with(
             data_type="certificate_list",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'query_params': expected_query_params,
                 'result_count': 0
@@ -443,7 +441,7 @@ class TestBulkRevokeUserCertificates:
         """Test that bulk_revoke_user_certificates requires authentication."""
         response = client.post('/api/certificates/user/test@example.com/revoke',
                                json={'reason': 'key_compromise'})
-        assert response.status_code == 302  # Redirect to login
+        assert response.status_code == 401  # No valid API token
 
     def test_bulk_revoke_user_certificates_requires_service_admin(self, app):
         """Test that bulk_revoke_user_certificates requires service admin privileges."""
@@ -462,13 +460,13 @@ class TestBulkRevokeUserCertificates:
 
         response = client.post('/api/certificates/user/test@example.com/revoke',
                                json={'reason': 'key_compromise'})
-        assert response.status_code == 403
+        assert response.status_code == 401
 
-    def test_bulk_revoke_user_certificates_requires_service_admin_not_auditor(self, auditor_client):
-        """Test that bulk_revoke_user_certificates requires service admin, not just auditor."""
-        response = auditor_client.post('/api/certificates/user/test@example.com/revoke',
-                                       json={'reason': 'key_compromise'})
-        assert response.status_code == 403
+    def test_bulk_revoke_user_certificates_requires_api_token_not_session(self, client):
+        """Test that bulk_revoke_user_certificates requires an API token (no session auth)."""
+        response = client.post('/api/certificates/user/test@example.com/revoke',
+                               json={'reason': 'key_compromise'})
+        assert response.status_code == 401
 
     def test_bulk_revoke_user_certificates_missing_request_body(self, service_admin_client):
         """Test bulk revocation fails without request body."""
@@ -526,7 +524,7 @@ class TestBulkRevokeUserCertificates:
         mock_client.bulk_revoke_user_certificates.assert_called_once_with(
             user_id='test@example.com',
             reason='key_compromise',
-            revoked_by='service-admin@example.com'
+            revoked_by='api-test@example.com'
         )
 
         # Verify security logging
@@ -534,7 +532,7 @@ class TestBulkRevokeUserCertificates:
             revocation_type="user_email",
             target_identifier='test@example.com',
             reason='key_compromise',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=5
         )
 
@@ -564,7 +562,7 @@ class TestBulkRevokeUserCertificates:
             revocation_type="user_email",
             target_identifier='nonexistent@example.com',
             reason='cessation_of_operation',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=0
         )
 
@@ -599,7 +597,7 @@ class TestBulkRevokeUserCertificates:
             mock_client.bulk_revoke_user_certificates.assert_called_with(
                 user_id='test@example.com',
                 reason=reason,
-                revoked_by='service-admin@example.com'
+                revoked_by='api-test@example.com'
             )
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
@@ -653,7 +651,7 @@ class TestBulkRevokeUserCertificates:
         mock_client.bulk_revoke_user_certificates.assert_called_once_with(
             user_id=special_email,
             reason='key_compromise',
-            revoked_by='service-admin@example.com'
+            revoked_by='api-test@example.com'
         )
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
@@ -677,7 +675,7 @@ class TestBulkRevokeUserCertificates:
             revocation_type="user_email",
             target_identifier='test@example.com',
             reason='key_compromise',
-            user_id='admin@example.com',  # Admin user, not service admin
+            user_id='api-test@example.com',  # Admin user, not service admin
             certificates_affected=1
         )
 
@@ -688,7 +686,7 @@ class TestListUserCertificates:
     def test_list_user_certificates_requires_auth(self, client):
         """Test that list_user_certificates requires authentication."""
         response = client.get('/api/certificates/user/test@example.com')
-        assert response.status_code == 302  # Redirect to login
+        assert response.status_code == 401  # No valid API token
 
     def test_list_user_certificates_requires_service_admin_or_auditor(self, app):
         """Test that list_user_certificates requires service admin or auditor privileges."""
@@ -706,7 +704,7 @@ class TestListUserCertificates:
             }
 
         response = client.get('/api/certificates/user/test@example.com')
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
     @patch('app.utils.security_logging.security_logger.log_data_access')
@@ -744,7 +742,7 @@ class TestListUserCertificates:
         mock_log_access.assert_called_once_with(
             data_type="user_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'target_user_email': 'test@example.com',
                 'active_only': False,
@@ -776,7 +774,7 @@ class TestListUserCertificates:
         mock_log_access.assert_called_once_with(
             data_type="user_certificates",
             access_type="query",
-            user_id='auditor@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'target_user_email': 'auditor-test@example.com',
                 'active_only': False,
@@ -828,7 +826,7 @@ class TestListUserCertificates:
         mock_log_access.assert_called_once_with(
             data_type="user_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'target_user_email': 'test@example.com',
                 'active_only': True,
@@ -910,7 +908,7 @@ class TestListUserCertificates:
         mock_log_access.assert_called_once_with(
             data_type="user_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'target_user_email': special_email,
                 'active_only': False,
@@ -944,7 +942,7 @@ class TestListUserCertificates:
         mock_log_access.assert_called_once_with(
             data_type="user_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'target_user_email': 'nonexistent@example.com',
                 'active_only': False,
@@ -1001,7 +999,7 @@ class TestListComputerCertificates:
     def test_list_computer_certificates_requires_auth(self, client):
         """Test that list_computer_certificates requires authentication."""
         response = client.get('/api/certificates/computer')
-        assert response.status_code == 302  # Redirect to login
+        assert response.status_code == 401  # No valid API token
 
     def test_list_computer_certificates_requires_service_admin_or_auditor(self, app):
         """Test that list_computer_certificates requires service admin or auditor privileges."""
@@ -1019,7 +1017,7 @@ class TestListComputerCertificates:
             }
 
         response = client.get('/api/certificates/computer')
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
     @patch('app.utils.security_logging.security_logger.log_data_access')
@@ -1055,7 +1053,7 @@ class TestListComputerCertificates:
         mock_log_access.assert_called_once_with(
             data_type="computer_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'psk_filter': None,
                 'active_only': False,
@@ -1086,7 +1084,7 @@ class TestListComputerCertificates:
         mock_log_access.assert_called_once_with(
             data_type="computer_certificates",
             access_type="query",
-            user_id='auditor@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'psk_filter': None,
                 'active_only': False,
@@ -1137,7 +1135,7 @@ class TestListComputerCertificates:
         mock_log_access.assert_called_once_with(
             data_type="computer_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'psk_filter': None,
                 'active_only': True,
@@ -1199,7 +1197,7 @@ class TestListComputerCertificates:
         mock_log_access.assert_called_once_with(
             data_type="computer_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'psk_filter': 'Production',
                 'active_only': False,
@@ -1235,7 +1233,7 @@ class TestListComputerCertificates:
         mock_log_access.assert_called_once_with(
             data_type="computer_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'psk_filter': 'Staging',
                 'active_only': True,
@@ -1295,7 +1293,7 @@ class TestListComputerCertificates:
         mock_log_access.assert_called_once_with(
             data_type="computer_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'psk_filter': special_filter,
                 'active_only': False,
@@ -1328,7 +1326,7 @@ class TestListComputerCertificates:
         mock_log_access.assert_called_once_with(
             data_type="computer_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'psk_filter': 'NonExistent',
                 'active_only': False,
@@ -1375,7 +1373,7 @@ class TestListComputerCertificates:
         mock_log_access.assert_called_once_with(
             data_type="computer_certificates",
             access_type="query",
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             additional_details={
                 'psk_filter': '',
                 'active_only': False,
@@ -1392,7 +1390,7 @@ class TestBulkRevokeComputerCertificates:
         """Test that bulk_revoke_computer_certificates requires authentication."""
         response = client.post('/api/certificates/computer/bulk-revoke',
                                json={'psk_filter': 'Production', 'reason': 'key_compromise'})
-        assert response.status_code == 302  # Redirect to login
+        assert response.status_code == 401  # No valid API token
 
     def test_bulk_revoke_computer_certificates_requires_service_admin(self, app):
         """Test that bulk_revoke_computer_certificates requires service admin privileges."""
@@ -1411,13 +1409,13 @@ class TestBulkRevokeComputerCertificates:
 
         response = client.post('/api/certificates/computer/bulk-revoke',
                                json={'psk_filter': 'Production', 'reason': 'key_compromise'})
-        assert response.status_code == 403
+        assert response.status_code == 401
 
-    def test_bulk_revoke_computer_certificates_requires_service_admin_not_auditor(self, auditor_client):
-        """Test that bulk_revoke_computer_certificates requires service admin, not just auditor."""
-        response = auditor_client.post('/api/certificates/computer/bulk-revoke',
-                                       json={'psk_filter': 'Production', 'reason': 'key_compromise'})
-        assert response.status_code == 403
+    def test_bulk_revoke_computer_certificates_requires_api_token_not_session(self, client):
+        """Test that bulk_revoke_computer_certificates requires an API token (no session auth)."""
+        response = client.post('/api/certificates/computer/bulk-revoke',
+                               json={'psk_filter': 'Production', 'reason': 'key_compromise'})
+        assert response.status_code == 401
 
     def test_bulk_revoke_computer_certificates_missing_request_body(self, service_admin_client):
         """Test bulk revocation fails without request body."""
@@ -1491,7 +1489,7 @@ class TestBulkRevokeComputerCertificates:
         mock_client.bulk_revoke_computer_certificates.assert_called_once_with(
             psk_filter='Production',
             reason='key_compromise',
-            revoked_by='service-admin@example.com'
+            revoked_by='api-test@example.com'
         )
 
         # Verify security logging
@@ -1499,7 +1497,7 @@ class TestBulkRevokeComputerCertificates:
             revocation_type="computer_psk",
             target_identifier='Production',
             reason='key_compromise',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=8
         )
 
@@ -1529,7 +1527,7 @@ class TestBulkRevokeComputerCertificates:
             revocation_type="computer_psk",
             target_identifier='NonExistentPSK',
             reason='cessation_of_operation',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=0
         )
 
@@ -1564,7 +1562,7 @@ class TestBulkRevokeComputerCertificates:
             mock_client.bulk_revoke_computer_certificates.assert_called_with(
                 psk_filter='TestPSK',
                 reason=reason,
-                revoked_by='service-admin@example.com'
+                revoked_by='api-test@example.com'
             )
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
@@ -1589,7 +1587,7 @@ class TestBulkRevokeComputerCertificates:
         mock_client.bulk_revoke_computer_certificates.assert_called_once_with(
             psk_filter=special_psk,
             reason='key_compromise',
-            revoked_by='service-admin@example.com'
+            revoked_by='api-test@example.com'
         )
 
         # Verify security logging includes special PSK filter
@@ -1597,7 +1595,7 @@ class TestBulkRevokeComputerCertificates:
             revocation_type="computer_psk",
             target_identifier=special_psk,
             reason='key_compromise',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=2
         )
 
@@ -1651,7 +1649,7 @@ class TestBulkRevokeComputerCertificates:
             revocation_type="computer_psk",
             target_identifier='Staging',
             reason='key_compromise',
-            user_id='admin@example.com',  # Admin user, not service admin
+            user_id='api-test@example.com',  # Admin user, not service admin
             certificates_affected=3
         )
 
@@ -1663,7 +1661,7 @@ class TestBulkRevokeByCA:
         """Test that bulk_revoke_by_ca requires authentication."""
         response = client.post('/api/certificates/bulk-revoke-by-ca',
                                json={'ca_issuer': 'CN=Test CA', 'reason': 'ca_compromise'})
-        assert response.status_code == 302  # Redirect to login
+        assert response.status_code == 401  # No valid API token
 
     def test_bulk_revoke_by_ca_requires_service_admin(self, app):
         """Test that bulk_revoke_by_ca requires service admin privileges."""
@@ -1682,13 +1680,13 @@ class TestBulkRevokeByCA:
 
         response = client.post('/api/certificates/bulk-revoke-by-ca',
                                json={'ca_issuer': 'CN=Test CA', 'reason': 'ca_compromise'})
-        assert response.status_code == 403
+        assert response.status_code == 401
 
-    def test_bulk_revoke_by_ca_requires_service_admin_not_auditor(self, auditor_client):
-        """Test that bulk_revoke_by_ca requires service admin, not just auditor."""
-        response = auditor_client.post('/api/certificates/bulk-revoke-by-ca',
-                                       json={'ca_issuer': 'CN=Test CA', 'reason': 'ca_compromise'})
-        assert response.status_code == 403
+    def test_bulk_revoke_by_ca_requires_api_token_not_session(self, client):
+        """Test that bulk_revoke_by_ca requires an API token (no session auth)."""
+        response = client.post('/api/certificates/bulk-revoke-by-ca',
+                               json={'ca_issuer': 'CN=Test CA', 'reason': 'ca_compromise'})
+        assert response.status_code == 401
 
     def test_bulk_revoke_by_ca_missing_request_body(self, service_admin_client):
         """Test bulk revocation fails without request body."""
@@ -1762,7 +1760,7 @@ class TestBulkRevokeByCA:
         mock_client.bulk_revoke_by_ca.assert_called_once_with(
             ca_issuer='CN=Compromised Root CA',
             reason='ca_compromise',
-            revoked_by='service-admin@example.com'
+            revoked_by='api-test@example.com'
         )
 
         # Verify security logging
@@ -1770,7 +1768,7 @@ class TestBulkRevokeByCA:
             revocation_type="ca_issuer",
             target_identifier='CN=Compromised Root CA',
             reason='ca_compromise',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=25
         )
 
@@ -1800,7 +1798,7 @@ class TestBulkRevokeByCA:
             revocation_type="ca_issuer",
             target_identifier='CN=NonExistent CA',
             reason='cessation_of_operation',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=0
         )
 
@@ -1835,7 +1833,7 @@ class TestBulkRevokeByCA:
             mock_client.bulk_revoke_by_ca.assert_called_with(
                 ca_issuer='CN=Test CA',
                 reason=reason,
-                revoked_by='service-admin@example.com'
+                revoked_by='api-test@example.com'
             )
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
@@ -1860,7 +1858,7 @@ class TestBulkRevokeByCA:
         mock_client.bulk_revoke_by_ca.assert_called_once_with(
             ca_issuer=complex_issuer,
             reason='key_compromise',
-            revoked_by='service-admin@example.com'
+            revoked_by='api-test@example.com'
         )
 
         # Verify security logging includes complex CA issuer
@@ -1868,7 +1866,7 @@ class TestBulkRevokeByCA:
             revocation_type="ca_issuer",
             target_identifier=complex_issuer,
             reason='key_compromise',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=15
         )
 
@@ -1897,7 +1895,7 @@ class TestBulkRevokeByCA:
             revocation_type="ca_issuer",
             target_identifier='CN=Intermediate CA',
             reason='superseded',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=8
         )
 
@@ -1930,7 +1928,7 @@ class TestBulkRevokeByCA:
             revocation_type="ca_issuer",
             target_identifier='Development',
             reason='affiliation_changed',
-            user_id='service-admin@example.com',
+            user_id='api-test@example.com',
             certificates_affected=12
         )
 
@@ -1984,7 +1982,7 @@ class TestBulkRevokeByCA:
             revocation_type="ca_issuer",
             target_identifier='CN=Admin Test CA',
             reason='privilege_withdrawn',
-            user_id='admin@example.com',  # Admin user, not service admin
+            user_id='api-test@example.com',  # Admin user, not service admin
             certificates_affected=5
         )
 
@@ -2009,7 +2007,7 @@ class TestBulkRevokeByCA:
         mock_client.bulk_revoke_by_ca.assert_called_once_with(
             ca_issuer='cn=lowercase ca',  # Exact case preservation
             reason='certificate_hold',
-            revoked_by='service-admin@example.com'
+            revoked_by='api-test@example.com'
         )
 
     @patch('app.routes.api.service_admin.get_certtransparency_client')
@@ -2039,7 +2037,7 @@ class TestBulkRevokeByCA:
         mock_client.bulk_revoke_by_ca.assert_called_once_with(
             ca_issuer='CN=Legacy CA',
             reason='cessation_of_operation',
-            revoked_by='service-admin@example.com'
+            revoked_by='api-test@example.com'
         )
 
 
@@ -2050,7 +2048,7 @@ class TestCreateComputerPSK:
         """Test that create_computer_psk requires authentication."""
         response = client.post('/api/psks/computer',
                                json={'description': 'Test Computer PSK'})
-        assert response.status_code == 302  # Redirect to login
+        assert response.status_code == 401  # No valid API token
 
     def test_create_computer_psk_requires_service_admin(self, app):
         """Test that create_computer_psk requires service admin privileges."""
@@ -2069,13 +2067,13 @@ class TestCreateComputerPSK:
 
         response = client.post('/api/psks/computer',
                                json={'description': 'Test Computer PSK'})
-        assert response.status_code == 403
+        assert response.status_code == 401
 
-    def test_create_computer_psk_requires_service_admin_not_auditor(self, auditor_client):
-        """Test that create_computer_psk requires service admin, not just auditor."""
-        response = auditor_client.post('/api/psks/computer',
-                                       json={'description': 'Test Computer PSK'})
-        assert response.status_code == 403
+    def test_create_computer_psk_requires_api_token(self, client):
+        """Test that create_computer_psk requires an API token (no session auth accepted)."""
+        response = client.post('/api/psks/computer',
+                               json={'description': 'Test Computer PSK'})
+        assert response.status_code == 401
 
     def test_create_computer_psk_missing_request_body(self, service_admin_client):
         """Test PSK creation fails without request body."""
@@ -2137,7 +2135,7 @@ class TestCreateComputerPSK:
             psk_type='computer',
             description='Production Web Server',
             template_set='Default',
-            created_by='service-admin@example.com',
+            created_by='api-test@example.com',
             expires_at=None
         )
 
@@ -2165,7 +2163,7 @@ class TestCreateComputerPSK:
             psk_type='computer',
             description='Staging Environment Server',
             template_set='Staging',
-            created_by='service-admin@example.com',
+            created_by='api-test@example.com',
             expires_at=None
         )
 
@@ -2193,7 +2191,7 @@ class TestCreateComputerPSK:
             psk_type='computer',
             description='Temporary Test Server',
             template_set='Default',
-            created_by='service-admin@example.com',
+            created_by='api-test@example.com',
             expires_at='2024-12-31T23:59:59+00:00'
         )
 
@@ -2222,7 +2220,7 @@ class TestCreateComputerPSK:
             psk_type='computer',
             description='Development Docker Cluster',
             template_set='Development',
-            created_by='service-admin@example.com',
+            created_by='api-test@example.com',
             expires_at='2024-06-30T12:00:00+00:00'
         )
 
@@ -2291,7 +2289,7 @@ class TestCreateComputerPSK:
             psk_type='computer',
             description=special_description,
             template_set='Default',
-            created_by='service-admin@example.com',
+            created_by='api-test@example.com',
             expires_at=None
         )
 
@@ -2311,7 +2309,7 @@ class TestCreateComputerPSK:
             psk_type='computer',
             description='Admin Created PSK',
             template_set='Default',
-            created_by='admin@example.com',  # Admin user, not service admin
+            created_by='api-test@example.com',  # Admin user, not service admin
             expires_at=None
         )
 
@@ -2405,10 +2403,11 @@ class TestCreateComputerPskAdditionalCoverage:
         """Test database rollback when PSK creation fails."""
         mock_uuid.return_value = 'test-uuid-rollback'
 
-        # Mock database session to raise an exception during commit
-        with patch('app.routes.api.service_admin.db.session') as mock_session:
-            mock_session.add.side_effect = Exception("Database connection lost")
-            mock_session.rollback = Mock()
+        # Patch only session.add (to raise) and session.rollback (to track calls),
+        # leaving the real session intact so api_token_required can still look up tokens.
+        with patch('app.routes.api.service_admin.db.session.add',
+                   side_effect=Exception("Database connection lost")), \
+             patch('app.routes.api.service_admin.db.session.rollback') as mock_rollback:
 
             response = service_admin_client.post('/api/psks/computer',
                                                 json={'description': 'Should fail'})
@@ -2419,7 +2418,7 @@ class TestCreateComputerPskAdditionalCoverage:
             assert 'Database connection lost' in data['details']
 
             # Verify rollback was called
-            mock_session.rollback.assert_called_once()
+            mock_rollback.assert_called_once()
 
     @patch('app.utils.security_logging.security_logger.log_psk_created')
     @patch('app.routes.api.service_admin.uuid.uuid4')

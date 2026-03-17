@@ -3,7 +3,7 @@ Defines reusable decorators for authentication and authorization.
 """
 
 from functools import wraps
-from flask import request, abort, current_app, session, redirect, url_for, jsonify
+from flask import request, abort, current_app, session, redirect, url_for, jsonify, g
 from app.utils.tracing import trace
 from app.utils.security_logging import security_logger
 from app.models.presharedkey import PreSharedKey
@@ -329,6 +329,50 @@ def service_admin_or_auditor_required(f):
             current_app.logger.warning(f"Unauthorized access attempt by user {user.get('sub', 'unknown')} for {request.url}")
             abort(403)
 
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+def api_token_required(f):
+    """
+    Decorator for M2M API endpoints that require a valid API token.
+
+    Reads 'Authorization: Bearer <token>', verifies it against the ApiToken
+    table, and sets g.api_token on success.  Returns 401 for any failure.
+    Session cookies are intentionally NOT accepted (VULN-03 fix).
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        trace(current_app, 'utils.decorators.api_token_required.decorated_function')
+
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify(error='API token required'), 401
+
+        plaintext = auth_header[len('Bearer '):]
+
+        from app.models.apitoken import ApiToken
+        candidates = ApiToken.query.filter_by(is_revoked=False).all()
+        matched = None
+        for candidate in candidates:
+            if candidate.verify_key(plaintext) and candidate.is_valid():
+                matched = candidate
+                break
+
+        if matched is None:
+            return jsonify(error='Invalid or expired API token'), 401
+
+        # Record last use (non-critical — swallow commit failures)
+        from datetime import datetime, timezone
+        from app.extensions import db
+        try:
+            matched.last_used_at = datetime.now(timezone.utc)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.warning("api_token_required: failed to update last_used_at")
+
+        g.api_token = matched
         return f(*args, **kwargs)
 
     return decorated_function

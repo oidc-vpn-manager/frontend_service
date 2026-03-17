@@ -69,7 +69,10 @@ def service_admin_app():
         'TESTING': True,
         'WTF_CSRF_ENABLED': False,
         'ADMIN_URL_BASE': '',
+        'RATELIMIT_ENABLED': False,
     })
+    from app.extensions import limiter
+    limiter.init_app(app)
     with app.app_context():
         db.create_all()
     return app
@@ -77,18 +80,39 @@ def service_admin_app():
 
 @pytest.fixture
 def service_admin_client(service_admin_app):
-    """Test client with service-admin session."""
-    client = service_admin_app.test_client()
-    with client.session_transaction() as sess:
-        sess['user'] = {
-            'sub': 'service-admin@example.com',
-            'email': 'service-admin@example.com',
-            'name': 'Service Admin',
-            'is_system_admin': True,
-            'is_admin': False,
-            'is_auditor': False,
-        }
-    return client
+    """Test client authenticated via API token (VULN-03 fix)."""
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    from app.models.apitoken import ApiToken
+
+    plaintext = str(uuid.uuid4())
+    with service_admin_app.app_context():
+        tok = ApiToken.create(
+            plaintext_key=plaintext,
+            description='vuln13-test-token',
+            created_by='service-admin@example.com',
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+        db.session.add(tok)
+        db.session.commit()
+
+    class _AuthClient:
+        def __init__(self, client, token):
+            self._c = client
+            self._h = {'Authorization': f'Bearer {token}'}
+
+        def _inject(self, kwargs):
+            h = dict(self._h)
+            h.update(kwargs.pop('headers', {}) or {})
+            kwargs['headers'] = h
+            return kwargs
+
+        def get(self, *a, **kw):    return self._c.get(*a, **self._inject(kw))
+        def post(self, *a, **kw):   return self._c.post(*a, **self._inject(kw))
+        def put(self, *a, **kw):    return self._c.put(*a, **self._inject(kw))
+        def delete(self, *a, **kw): return self._c.delete(*a, **self._inject(kw))
+
+    return _AuthClient(service_admin_app.test_client(), plaintext)
 
 
 # ---------------------------------------------------------------------------

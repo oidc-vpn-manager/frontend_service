@@ -5,28 +5,26 @@ These endpoints provide programmatic access to certificate transparency logs,
 bulk revocation operations, and PSK management for service accounts and auditors.
 """
 
-from flask import Blueprint, jsonify, current_app, request
+from flask import Blueprint, jsonify, current_app, request, g
 from app.utils.tracing import trace
 from app.utils.decorators import (
-    service_admin_required,
-    service_admin_or_auditor_required,
+    api_token_required,
     admin_service_only_api
 )
 from app.utils.certtransparency_client import get_certtransparency_client, CertTransparencyClientError
 from app.utils.security_logging import security_logger
 from app.models.presharedkey import PreSharedKey
-from app.extensions import db, csrf
+from app.extensions import db
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import text
 
 bp = Blueprint('service_admin', __name__, url_prefix='/api')
-csrf.exempt(bp)
 
 
 @bp.route('/certificates', methods=['GET'])
 @admin_service_only_api
-@service_admin_or_auditor_required
+@api_token_required
 def list_all_certificates():
     """
     List all certificates (active and revoked) for service admin/auditor access.
@@ -94,12 +92,10 @@ def list_all_certificates():
         result = ct_client.list_certificates(**params)
 
         # Log certificate access
-        from flask import session
-        user = session.get('user', {})
         security_logger.log_data_access(
             data_type="certificate_list",
             access_type="query",
-            user_id=user.get('sub', ''),
+            user_id=g.api_token.created_by,
             additional_details={
                 'query_params': dict(request.args),
                 'result_count': len(result.get('certificates', []))
@@ -115,7 +111,7 @@ def list_all_certificates():
 
 @bp.route('/certificates/user/<email>', methods=['GET'])
 @admin_service_only_api
-@service_admin_or_auditor_required
+@api_token_required
 def list_user_certificates(email):
     """
     List all certificates for a specific user email address.
@@ -141,12 +137,10 @@ def list_user_certificates(email):
         )
 
         # Log user certificate access
-        from flask import session
-        user = session.get('user', {})
         security_logger.log_data_access(
             data_type="user_certificates",
             access_type="query",
-            user_id=user.get('sub', ''),
+            user_id=g.api_token.created_by,
             additional_details={
                 'target_user_email': email,
                 'active_only': active_only,
@@ -164,7 +158,7 @@ def list_user_certificates(email):
 
 @bp.route('/certificates/computer', methods=['GET'])
 @admin_service_only_api
-@service_admin_or_auditor_required
+@api_token_required
 def list_computer_certificates():
     """
     List all computer certificates.
@@ -192,12 +186,10 @@ def list_computer_certificates():
         )
 
         # Log computer certificate access
-        from flask import session
-        user = session.get('user', {})
         security_logger.log_data_access(
             data_type="computer_certificates",
             access_type="query",
-            user_id=user.get('sub', ''),
+            user_id=g.api_token.created_by,
             additional_details={
                 'psk_filter': psk_filter,
                 'active_only': active_only,
@@ -215,7 +207,7 @@ def list_computer_certificates():
 
 @bp.route('/certificates/user/<email>/revoke', methods=['POST'])
 @admin_service_only_api
-@service_admin_required
+@api_token_required
 def bulk_revoke_user_certificates(email):
     """
     Bulk revoke all active certificates for a specific user email address.
@@ -241,9 +233,7 @@ def bulk_revoke_user_certificates(email):
             return jsonify(error="Missing required field: reason"), 400
 
         reason = data['reason']
-        from flask import session
-        user = session.get('user', {})
-        revoked_by = user.get('sub', '')
+        revoked_by = g.api_token.created_by
 
         ct_client = get_certtransparency_client()
         result = ct_client.bulk_revoke_user_certificates(
@@ -273,7 +263,7 @@ def bulk_revoke_user_certificates(email):
 
 @bp.route('/certificates/computer/bulk-revoke', methods=['POST'])
 @admin_service_only_api
-@service_admin_required
+@api_token_required
 def bulk_revoke_computer_certificates():
     """
     Bulk revoke computer certificates by PSK criteria.
@@ -294,9 +284,7 @@ def bulk_revoke_computer_certificates():
 
         psk_filter = data['psk_filter']
         reason = data['reason']
-        from flask import session
-        user = session.get('user', {})
-        revoked_by = user.get('sub', '')
+        revoked_by = g.api_token.created_by
 
         ct_client = get_certtransparency_client()
         result = ct_client.bulk_revoke_computer_certificates(
@@ -326,7 +314,7 @@ def bulk_revoke_computer_certificates():
 
 @bp.route('/certificates/bulk-revoke-by-ca', methods=['POST'])
 @admin_service_only_api
-@service_admin_required
+@api_token_required
 def bulk_revoke_by_ca():
     """
     Bulk revoke all active certificates issued by a specific CA.
@@ -347,9 +335,7 @@ def bulk_revoke_by_ca():
 
         ca_issuer = data['ca_issuer']
         reason = data['reason']
-        from flask import session
-        user = session.get('user', {})
-        revoked_by = user.get('sub', '')
+        revoked_by = g.api_token.created_by
 
         ct_client = get_certtransparency_client()
         result = ct_client.bulk_revoke_by_ca(
@@ -379,7 +365,7 @@ def bulk_revoke_by_ca():
 
 @bp.route('/psks/computer', methods=['POST'])
 @admin_service_only_api
-@service_admin_required
+@api_token_required
 def create_computer_psk():
     """
     Create a new computer PSK for service administrator or system administrator.
@@ -423,13 +409,11 @@ def create_computer_psk():
         db.session.commit()
 
         # Log PSK creation
-        from flask import session
-        user = session.get('user', {})
         security_logger.log_psk_created(
             psk_type='computer',
             description=data['description'],
             template_set=psk.template_set,
-            created_by=user.get('sub', ''),
+            created_by=g.api_token.created_by,
             expires_at=expires_at.isoformat() if expires_at else None
         )
 
