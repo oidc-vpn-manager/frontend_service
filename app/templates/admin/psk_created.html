@@ -1,3 +1,6 @@
+{# This template outputs HTML. Variables are rendered in HTML attribute/text context only;
+   Jinja2 HTML autoescaping provides sufficient protection. No JavaScript string context
+   embedding is present in this template. #}
 {% extends "base.html" %}
 
 {% block title %}PSK Created Successfully - {{ current_app.config.get('SITE_NAME') }}{% endblock %}

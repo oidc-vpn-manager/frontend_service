@@ -1,3 +1,6 @@
+{# Security: user_url is embedded in a JavaScript <script> block and must use the
+   |tojson filter so that special characters are JSON-encoded (e.g. single quote -> \\u0027)
+   rather than HTML-encoded (&#39;). HTML entities are literal chars in JS contexts. #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -104,7 +107,7 @@
         // Configure endpoint validation
         const bounceContainer = document.querySelector('.bounce-container');
         if (bounceContainer) {
-            bounceContainer.setAttribute('data-target-url', "{{ user_url }}");
+            bounceContainer.setAttribute('data-target-url', {{ user_url | tojson }});
             bounceContainer.setAttribute('data-service-type', 'User');
         }
     </script>

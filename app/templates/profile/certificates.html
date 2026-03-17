@@ -1,3 +1,8 @@
+{# Security review: this template embeds server variables in HTML data attributes
+   (double-quoted HTML attribute context). Jinja2 HTML autoescaping correctly handles
+   this context — " is encoded as &quot;, preventing attribute boundary injection.
+   The data-fingerprint and data-subject values are read by external JS via safe DOM
+   APIs (element.dataset.*) with no JavaScript string literal interpolation. #}
 {% extends "base.html" %}
 
 {% block title %}My Certificates - {{ current_app.config.get('SITE_NAME') }}{% endblock %}

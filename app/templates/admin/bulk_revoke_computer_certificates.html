@@ -1,3 +1,5 @@
+{# Security: psk.description in the onclick handler uses |tojson (VULN-07 fix) so that
+   single quotes and other JS-unsafe chars are JSON-encoded rather than HTML-encoded. #}
 {% extends "base.html" %}
 {% set active_page = 'admin' %}
 
