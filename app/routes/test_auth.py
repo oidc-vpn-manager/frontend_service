@@ -93,6 +93,9 @@ def mock_oidc_callback():
 
     current_app.logger.info(f"Mock OIDC authentication completed for: {session['user']['email']}")
 
-    # Redirect to the original destination
+    # Redirect to the original destination — validate to prevent open redirect
     redirect_uri = request.form.get('redirect_uri', '/')
+    if not (redirect_uri.startswith('/') and not redirect_uri.startswith('//')):
+        current_app.logger.warning(f"Mock OIDC: rejected external redirect_uri: {redirect_uri}")
+        redirect_uri = '/'
     return redirect(redirect_uri)

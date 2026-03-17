@@ -323,3 +323,60 @@ class TestVuln01OpenRedirect:
         client.get('/auth/login?next=/profile/certificates')
         with client.session_transaction() as sess:
             assert sess.get('next_url') == '/profile/certificates'
+
+
+@pytest.fixture
+def test_auth_app():
+    """Flask app with the mock OIDC test blueprints registered."""
+    import os
+    os.environ['ENABLE_TEST_AUTH_ROUTES'] = 'true'
+    app = Flask(__name__)
+    app.config['TESTING'] = True
+    app.config['SECRET_KEY'] = 'test-secret-key-vuln17'
+
+    from app.routes.test_auth import bp_root as test_auth_root_bp
+    app.register_blueprint(test_auth_root_bp)
+
+    return app
+
+
+class TestVuln17MockOidcCallbackOpenRedirect:
+    """VULN-17: mock_oidc_callback must validate redirect_uri to prevent open redirect.
+
+    Before fix: redirect_uri from POST body is used directly with no validation,
+    so an attacker-controlled value like http://attacker.com causes the server to
+    redirect the victim's browser to an external site after mock login.
+
+    After fix: same startswith('/') and not startswith('//') guard as auth.py;
+    external URLs fall back to '/'.
+    """
+
+    def test_external_url_rejected(self, test_auth_app):
+        """http://attacker.com as redirect_uri must not redirect to that host."""
+        client = test_auth_app.test_client()
+        response = client.post('/mock_oidc_callback', data={
+            'email': 'user@example.com',
+            'redirect_uri': 'http://attacker.com/steal',
+        })
+        assert response.status_code == 302
+        assert 'attacker.com' not in response.location
+
+    def test_protocol_relative_url_rejected(self, test_auth_app):
+        """//evil.com as redirect_uri must not redirect to that host."""
+        client = test_auth_app.test_client()
+        response = client.post('/mock_oidc_callback', data={
+            'email': 'user@example.com',
+            'redirect_uri': '//evil.com',
+        })
+        assert response.status_code == 302
+        assert 'evil.com' not in response.location
+
+    def test_relative_path_accepted(self, test_auth_app):
+        """/dashboard is a safe relative URL and must be followed."""
+        client = test_auth_app.test_client()
+        response = client.post('/mock_oidc_callback', data={
+            'email': 'user@example.com',
+            'redirect_uri': '/dashboard',
+        })
+        assert response.status_code == 302
+        assert response.location == '/dashboard'
