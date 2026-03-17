@@ -149,12 +149,12 @@ def index():
             db.session.commit()
 
             # 8. Return the file as a download
-            download_filename = f"{user_email.split('@')[0]}.ovpn"
+            safe_local = user_email.split('@')[0].replace('\r', '').replace('\n', '').replace('"', '')
             return Response(
                 final_config,
                 mimetype="application/x-openvpn-profile",
                 headers={
-                    "Content-disposition": f"attachment; filename={download_filename}",
+                    "Content-disposition": f'attachment; filename="{safe_local}.ovpn"',
                     "Cache-Control": "no-store",
                     "Pragma": "no-cache",
                 }

@@ -233,11 +233,12 @@ def server_bundle(psk_object):
         tar_content = tar_buffer.getvalue()
         
         # 8. Return tar file as response
+        safe_desc = psk_object.description.replace('\r', '').replace('\n', '').replace('"', '')
         return Response(
             tar_content,
             mimetype='application/gzip',
             headers={
-                'Content-Disposition': f'attachment; filename=openvpn-server-{psk_object.description}.tar.gz'
+                'Content-Disposition': f'attachment; filename="openvpn-server-{safe_desc}.tar.gz"'
             }
         )
         
@@ -417,11 +418,11 @@ def computer_bundle(psk_object):
             return jsonify({'error': 'Template rendering failed'}), 500
 
         # 7. Return single OVPN file like user profiles
-        download_filename = f"computer-{psk_object.description}.ovpn"
+        safe_desc = psk_object.description.replace('\r', '').replace('\n', '').replace('"', '')
         return Response(
             final_config,
             mimetype="application/x-openvpn-profile",
-            headers={"Content-disposition": f"attachment; filename={download_filename}"}
+            headers={"Content-disposition": f'attachment; filename="computer-{safe_desc}.ovpn"'}
         )
 
     except SigningServiceError as e: # pragma: no cover
