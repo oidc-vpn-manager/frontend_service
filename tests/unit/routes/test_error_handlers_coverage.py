@@ -97,3 +97,42 @@ class TestErrorHandlersCoverage:
 
                 # Should call render_template with 500.html template
                 mock_render.assert_called_with('status/500.html')
+
+    def test_bad_request_handler_coverage(self, client, app):
+        """Cover __init__.py:8 — 400 handler renders status/400.html."""
+        from werkzeug.exceptions import BadRequest
+
+        with patch('app.routes.render_template') as mock_render:
+            mock_render.return_value = "400 Bad Request Page"
+
+            error_handler = app.error_handler_spec[None][400][BadRequest]
+            mock_exc = BadRequest("Invalid input")
+
+            with app.test_request_context():
+                result = error_handler(mock_exc)
+
+            assert result[1] == 400
+            mock_render.assert_called_once_with(
+                'status/400.html', error_description=mock_exc.description
+            )
+
+    def test_version_constant_importable(self, app):
+        """Cover version.py:9 — VERSION constant is accessible."""
+        from app.version import VERSION
+        assert isinstance(VERSION, str)
+        assert len(VERSION) > 0
+
+    def test_test_auth_routes_registered_when_enabled(self):
+        """Cover __init__.py:90-93 — test auth routes registered when ENABLE_TEST_AUTH_ROUTES=true."""
+        import os
+        os.environ['FLASK_SECRET_KEY'] = 'test-secret-key-for-enable-test-auth'
+        os.environ['FERNET_ENCRYPTION_KEY'] = 'YenxIAHqvrO7OHbNXvzAxEhthHCaitvnV9CALkQvvCc='
+        os.environ['ENABLE_TEST_AUTH_ROUTES'] = 'true'
+        os.environ['FLASK_ENV'] = 'development'
+        try:
+            app = create_app('development')
+            blueprint_names = list(app.blueprints)
+            assert 'test_auth' in blueprint_names
+        finally:
+            os.environ.pop('ENABLE_TEST_AUTH_ROUTES', None)
+            os.environ.pop('FLASK_ENV', None)

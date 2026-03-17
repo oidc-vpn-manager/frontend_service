@@ -66,3 +66,46 @@ class TestVuln05SessionFixation:
             "Session cookie unchanged after OIDC login — session fixation vulnerability: "
             f"before={cookie_before!r}, after={cookie_after!r}"
         )
+
+
+class TestVuln05SessionFixationServerSideBranch:
+    """Cover auth.py:105-106 — server-side session interface SID rotation path."""
+
+    def test_sid_rotation_with_server_side_session_interface(self, app, mock_oauth_vuln05):
+        """Lines 105-106: _delete_session and _generate_sid called when session has .sid."""
+        from flask.sessions import SecureCookieSession
+        from unittest.mock import MagicMock
+
+        delete_mock = MagicMock()
+        generate_mock = MagicMock(return_value='new-generated-sid')
+
+        class _SIDSession(SecureCookieSession):
+            sid = 'old-sid-value'
+
+        class _ServerSideInterface:
+            sid_length = 32
+            _delete_session = delete_mock
+            _generate_sid = generate_mock
+
+            def _get_store_id(self, sid):
+                return f'store:{sid}'
+
+            def open_session(self, _app, _request):
+                return _SIDSession()
+
+            def save_session(self, _app, _session, response):
+                pass  # no-op for test
+
+            def is_null_session(self, session):
+                return False
+
+        original_si = app.session_interface
+        app.session_interface = _ServerSideInterface()
+        try:
+            client = app.test_client()
+            response = client.get('/auth/callback')
+            assert response.status_code == 302
+            delete_mock.assert_called_once_with('store:old-sid-value')
+            generate_mock.assert_called_once_with(32)
+        finally:
+            app.session_interface = original_si

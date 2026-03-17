@@ -323,7 +323,39 @@ class TestRequestBulkCertificateRevocation:
         Tests that an error is raised if the service is not configured.
         """
         app.config['SIGNING_SERVICE_URL'] = None
-        
+
         with app.app_context():
             with pytest.raises(SigningServiceError, match="not configured"):
                 request_bulk_certificate_revocation('testuser', 'user_terminated', 'admin')
+
+
+class TestRequestSignedCertificateOptionalParams:
+    """Cover optional client_ip and request_metadata branches."""
+
+    def test_request_with_client_ip(self, app, monkeypatch):
+        """Cover line 61: client_ip is included in the payload."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'certificate': '---CERT---'}
+        monkeypatch.setattr(requests, 'post', MagicMock(return_value=mock_response))
+
+        with app.app_context():
+            cert = request_signed_certificate('---CSR---', client_ip='10.0.0.1')
+
+        assert cert == '---CERT---'
+        _, kw = requests.post.call_args
+        assert kw['json']['client_ip'] == '10.0.0.1'
+
+    def test_request_with_request_metadata(self, app, monkeypatch):
+        """Cover line 65: request_metadata is included in the payload."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'certificate': '---CERT---'}
+        monkeypatch.setattr(requests, 'post', MagicMock(return_value=mock_response))
+
+        with app.app_context():
+            cert = request_signed_certificate('---CSR---', request_metadata={'source': 'cli'})
+
+        assert cert == '---CERT---'
+        _, kw = requests.post.call_args
+        assert kw['json']['request_metadata'] == {'source': 'cli'}

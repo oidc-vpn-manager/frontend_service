@@ -191,3 +191,33 @@ class TestValidateConfigTemplates:
         app.config['OVPN_TEMPLATE_PATH'] = str(tmp_path)
         with app.app_context():
             validate_config_templates(app)  # must not raise
+
+
+class TestFindBestTemplateMatchLazyLoad:
+    """Cover line 153: lazy-load when TEMPLATE_COLLECTION is None but OVPN_TEMPLATE_PATH is set."""
+
+    def test_lazy_loads_from_template_path(self, app, tmp_path):
+        """Line 153: if template_path is set, load_config_templates is called."""
+        tmpl_file = tmp_path / "1.default.ovpn"
+        tmpl_file.write_text("client\nremote vpn.example.com 1194\n")
+
+        app.config['OVPN_TEMPLATE_PATH'] = str(tmp_path)
+        app.config['TEMPLATE_COLLECTION'] = None
+
+        with app.app_context():
+            _name, content = find_best_template_match(app, ['default'])
+
+        assert 'client' in content
+
+
+class TestRenderConfigTemplateSecurityViolation:
+    """Cover lines 343-344: template rendering raises an 'unsafe' exception."""
+
+    def test_security_violation_raises_value_error(self, app):
+        """Lines 343-344: exception message containing 'unsafe' → ValueError."""
+        with app.app_context():
+            with pytest.raises(ValueError, match="unsafe operations"):
+                # Patch Jinja2 Template.render to raise an exception flagged as unsafe
+                with patch('app.utils.render_config_template.jinja2.Template.render',
+                           side_effect=Exception("unsafe Jinja2 sandbox operation")):
+                    render_config_template(app, "{{ x }}", x="ignored")

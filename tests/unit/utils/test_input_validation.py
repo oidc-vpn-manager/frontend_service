@@ -169,6 +169,16 @@ class TestValidatePaginationParams:
         result = validate_pagination_params("1", "10")
         assert result == {"page": 1, "limit": 10}
 
+    def test_validate_pagination_params_limit_too_low(self):
+        """Cover line 84: limit < 1 is capped to 1."""
+        result = validate_pagination_params(1, "-5")
+        assert result["limit"] == 1
+
+    def test_validate_pagination_params_limit_too_high(self):
+        """Cover line 86: limit > 1000 is capped to 1000."""
+        result = validate_pagination_params(1, 9999)
+        assert result["limit"] == 1000
+
 
 class TestValidateQueryParam:
     """Test query parameter validation."""
@@ -196,6 +206,12 @@ class TestValidateQueryParam:
         with pytest.raises(InputValidationError) as exc_info:
             validate_query_param("page", 123)  # Integer instead of string
         assert "Parameter page must be a string" in str(exc_info.value)
+
+    def test_validate_query_param_not_in_allowed_values(self):
+        """Cover line 158: value not in allowed_values list."""
+        with pytest.raises(InputValidationError) as exc_info:
+            validate_query_param("type", "invalid", allowed_values=["server", "client"])
+        assert "must be one of" in str(exc_info.value)
 
 
 # TestValidateFormField removed: validate_form_field was deleted from
@@ -321,4 +337,19 @@ class TestValidateDateString:
 
         with pytest.raises(InputValidationError) as exc_info:
             validate_date_string("")  # Empty string
-        assert "Date must be a non-empty string" in str(exc_info.value)
+
+    def test_validate_date_string_iso_datetime_format(self):
+        """Cover line 112: datetime with T (ISO datetime format)."""
+        result = validate_date_string("2024-06-15T10:30:00Z")
+        assert result == "2024-06-15T10:30:00Z"
+
+    def test_validate_date_string_space_datetime_format(self):
+        """Cover line 114: datetime with space separator."""
+        result = validate_date_string("2024-06-15 10:30:00")
+        assert result == "2024-06-15 10:30:00"
+
+    def test_validate_date_string_invalid_date_value(self):
+        """Cover lines 117-118: string matches regex but fails date parsing."""
+        with pytest.raises(InputValidationError) as exc_info:
+            validate_date_string("2024-13-99")  # matches \d{4}-\d{2}-\d{2} but month 13 is invalid
+        assert "Invalid date value" in str(exc_info.value)

@@ -275,63 +275,6 @@ def redirect_user_to_user_service(f):
     return decorated_function
 
 
-def service_admin_required(f):
-    """
-    Decorator to ensure a user has service administrator privileges.
-    This allows access to certificate management and bulk operations.
-    """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        trace(current_app, 'utils.decorators.service_admin_required.decorated_function')
-        # First, ensure user is logged in
-        if 'user' not in session or not session.get('user'):
-            # Store the intended destination URL for post-auth redirect
-            session['next_url'] = request.url
-            current_app.logger.info(f"Storing destination URL for service-admin-required post-auth redirect: {request.url}")
-            return redirect(url_for('auth.login'))
-
-        # Check for service admin or admin role
-        user = session.get('user', {})
-        is_system_admin = user.get('is_system_admin', False)
-        is_admin = user.get('is_admin', False)
-
-        if not (is_system_admin or is_admin):
-            current_app.logger.warning(f"Unauthorized access attempt by user {user.get('sub', 'unknown')} for {request.url}")
-            abort(403)
-
-        return f(*args, **kwargs)
-
-    return decorated_function
-
-
-def service_admin_or_auditor_required(f):
-    """
-    Decorator to ensure a user has service administrator or auditor privileges.
-    This allows access to certificate listing and querying operations.
-    """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        trace(current_app, 'utils.decorators.service_admin_or_auditor_required.decorated_function')
-        # First, ensure user is logged in
-        if 'user' not in session or not session.get('user'):
-            # Store the intended destination URL for post-auth redirect
-            session['next_url'] = request.url
-            current_app.logger.info(f"Storing destination URL for service-admin-or-auditor-required post-auth redirect: {request.url}")
-            return redirect(url_for('auth.login'))
-
-        # Check for auditor, service admin, or admin role
-        user = session.get('user', {})
-        is_auditor = user.get('is_auditor', False)
-        is_system_admin = user.get('is_system_admin', False)
-        is_admin = user.get('is_admin', False)
-
-        if not (is_auditor or is_system_admin or is_admin):
-            current_app.logger.warning(f"Unauthorized access attempt by user {user.get('sub', 'unknown')} for {request.url}")
-            abort(403)
-
-        return f(*args, **kwargs)
-
-    return decorated_function
 
 def api_token_required(f):
     """

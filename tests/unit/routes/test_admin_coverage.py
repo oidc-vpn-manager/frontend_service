@@ -892,3 +892,106 @@ def test_list_certificates_unexpected_exception(mock_render_template, app):
             # Verify empty state is passed
             assert call_args[1]['certificates'] == []
             assert call_args[1]['current_page'] == 1
+
+
+class TestApiTokenManagement:
+    """Tests for admin API token management routes (VULN-03)."""
+
+    def _admin_client(self, app):
+        client = app.test_client()
+        with client.session_transaction() as sess:
+            sess['user'] = {'sub': 'admin@example.com', 'groups': ['admins']}
+        return client
+
+    @patch('app.routes.admin.render_template', return_value='token list page')
+    def test_list_api_tokens_empty(self, mock_rt, app):
+        """GET /admin/api-tokens returns 200 with empty token list."""
+        client = self._admin_client(app)
+        response = client.get('/admin/api-tokens')
+        assert response.status_code == 200
+
+    @patch('app.routes.admin.render_template', return_value='token list page')
+    def test_list_api_tokens_with_token(self, mock_rt, app):
+        """GET /admin/api-tokens shows existing tokens."""
+        from datetime import datetime, timezone, timedelta
+        from app.models.apitoken import ApiToken
+        with app.app_context():
+            tok = ApiToken.create(
+                plaintext_key='test-plain-key',
+                description='coverage-token',
+                created_by='admin@example.com',
+                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            )
+            db.session.add(tok)
+            db.session.commit()
+
+        client = self._admin_client(app)
+        response = client.get('/admin/api-tokens')
+        assert response.status_code == 200
+
+    @patch('app.routes.admin.render_template', return_value='new token form')
+    def test_new_api_token_get(self, mock_rt, app):
+        """GET /admin/api-tokens/new renders the creation form."""
+        client = self._admin_client(app)
+        response = client.get('/admin/api-tokens/new')
+        assert response.status_code == 200
+
+    @patch('app.routes.admin.render_template', return_value='new token form')
+    def test_new_api_token_missing_description(self, mock_rt, app):
+        """POST /admin/api-tokens/new without description re-renders with flash."""
+        client = self._admin_client(app)
+        response = client.post('/admin/api-tokens/new', data={'description': '', 'expires_days': '30'})
+        assert response.status_code == 200
+
+    @patch('app.routes.admin.render_template', return_value='new token form')
+    def test_new_api_token_invalid_expires_days(self, mock_rt, app):
+        """POST /admin/api-tokens/new with invalid expires_days re-renders with flash."""
+        client = self._admin_client(app)
+        response = client.post('/admin/api-tokens/new', data={'description': 'x', 'expires_days': 'abc'})
+        assert response.status_code == 200
+
+    @patch('app.routes.admin.render_template', return_value='new token form')
+    def test_new_api_token_out_of_range_expires_days(self, mock_rt, app):
+        """POST /admin/api-tokens/new with expires_days=0 re-renders with flash."""
+        client = self._admin_client(app)
+        response = client.post('/admin/api-tokens/new', data={'description': 'x', 'expires_days': '0'})
+        assert response.status_code == 200
+
+    @patch('app.utils.security_logging.security_logger.log_psk_created')
+    @patch('app.routes.admin.render_template', return_value='token created page')
+    def test_new_api_token_success(self, mock_rt, mock_log, app):
+        """POST /admin/api-tokens/new with valid data creates token and shows Cache-Control."""
+        client = self._admin_client(app)
+        response = client.post('/admin/api-tokens/new', data={'description': 'My Token', 'expires_days': '90'})
+        assert response.status_code == 200
+        assert 'no-store' in response.headers.get('Cache-Control', '')
+
+    def test_revoke_api_token(self, app):
+        """POST /admin/api-tokens/<id>/revoke revokes the token and redirects."""
+        from datetime import datetime, timezone, timedelta
+        from app.models.apitoken import ApiToken
+        with app.app_context():
+            tok = ApiToken.create(
+                plaintext_key='revoke-test-key',
+                description='to-revoke',
+                created_by='admin@example.com',
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+            db.session.add(tok)
+            db.session.commit()
+            tok_id = tok.id
+
+        client = self._admin_client(app)
+        response = client.post(f'/admin/api-tokens/{tok_id}/revoke')
+        assert response.status_code == 302
+        assert '/admin/api-tokens' in response.location
+
+        with app.app_context():
+            revoked = ApiToken.query.get(tok_id)
+            assert revoked.is_revoked is True
+
+    def test_revoke_api_token_not_found(self, app):
+        """POST /admin/api-tokens/9999/revoke returns 404."""
+        client = self._admin_client(app)
+        response = client.post('/admin/api-tokens/9999/revoke')
+        assert response.status_code == 404

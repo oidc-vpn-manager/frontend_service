@@ -201,3 +201,17 @@ class TestApiTokenModel:
             )
             tok.is_revoked = True
             assert tok.is_valid() is False
+
+    def test_revoke_sets_is_revoked(self, app):
+        """Cover apitoken.py:62 — revoke() sets is_revoked to True."""
+        from app.models.apitoken import ApiToken
+        with app.app_context():
+            tok = ApiToken.create(
+                plaintext_key="plaintext",
+                description="test",
+                created_by="admin",
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+            assert not tok.is_revoked  # None or False before commit
+            tok.revoke()
+            assert tok.is_revoked is True

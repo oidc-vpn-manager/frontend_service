@@ -280,6 +280,35 @@ class TestJSONFormatterUnit:
             assert log_data['exception']['message'] == 'Test exception'
             assert 'traceback' in log_data['exception']
 
+    def test_exception_formatting_in_development_context(self):
+        """Cover logging_config.py:78 — include_traceback=True in development env."""
+        from flask import Flask
+        from app.utils.logging_config import JSONFormatter
+
+        dev_app = Flask(__name__)
+        dev_app.config['ENVIRONMENT'] = 'development'
+
+        formatter = JSONFormatter()
+        test_logger = logging.getLogger('test_dev')
+
+        try:
+            raise RuntimeError("dev exception")
+        except RuntimeError:
+            import sys
+            exc_info = sys.exc_info()
+            record = test_logger.makeRecord(
+                name='test_dev', level=logging.ERROR, fn='test.py',
+                lno=1, msg='dev error', args=(), exc_info=exc_info,
+            )
+            with dev_app.app_context():
+                formatted = formatter.format(record)
+
+        import json as _json
+        log_data = _json.loads(formatted)
+        assert log_data['exception']['type'] == 'RuntimeError'
+        # In development mode traceback should be included
+        assert log_data['exception']['traceback'] is not None
+
     def test_custom_fields(self):
         """Test that custom fields are included in JSON output."""
         formatter = JSONFormatter()
@@ -652,6 +681,51 @@ class TestSecurityLoggingCoverage:
 
         # The test succeeded if no exception was raised
         # This covers the missing line 327
+
+    def test_log_admin_action(self):
+        """Cover line 362: log_admin_action delegates to _log_security_event."""
+        with patch.object(self.logger, '_log_security_event') as mock_log:
+            self.logger.log_admin_action(
+                action='psk_created',
+                target='psk-123',
+                user_id='admin@example.com',
+                additional_details={'desc': 'test'},
+            )
+        mock_log.assert_called_once()
+        assert mock_log.call_args[1]['action'] == 'admin_action'
+
+    def test_log_input_validation_failure(self):
+        """Cover line 396: log_input_validation_failure delegates to _log_security_event."""
+        with patch.object(self.logger, '_log_security_event') as mock_log:
+            self.logger.log_input_validation_failure(
+                field='email',
+                value='bad-email',
+                validation_type='format',
+            )
+        mock_log.assert_called_once()
+        assert mock_log.call_args[1]['action'] == 'input_validation_failure'
+
+    def test_log_csrf_attack_attempt(self):
+        """Cover line 411: log_csrf_attack_attempt delegates to _log_security_event."""
+        with patch.object(self.logger, '_log_security_event') as mock_log:
+            self.logger.log_csrf_attack_attempt(
+                endpoint='/api/psks/computer',
+                expected_token='abc',
+                received_token='xyz',
+            )
+        mock_log.assert_called_once()
+        assert mock_log.call_args[1]['action'] == 'csrf_attack_attempt'
+
+    def test_log_system_error(self):
+        """Cover line 470: log_system_error delegates to _log_security_event."""
+        with patch.object(self.logger, '_log_security_event') as mock_log:
+            self.logger.log_system_error(
+                error_type='DatabaseError',
+                error_message='Connection refused',
+                stack_trace='Traceback ...',
+            )
+        mock_log.assert_called_once()
+        assert mock_log.call_args[1]['action'] == 'system_error'
 
 
 if __name__ == '__main__':
