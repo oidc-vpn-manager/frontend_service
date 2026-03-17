@@ -93,6 +93,18 @@ def callback():
         token = oauth.oidc.authorize_access_token()
         # Get userinfo from the userinfo endpoint (this includes groups)
         userinfo = oauth.oidc.userinfo(token=token)
+
+        # Prevent session fixation: delete the old server-side session record and
+        # assign a new SID before writing authenticated user data.  Pre-auth data
+        # (next_url, cli_port, cli_optionset) is preserved across the rotation.
+        _pre_auth = {k: v for k, v in session.items()}
+        si = current_app.session_interface
+        if hasattr(session, 'sid') and hasattr(si, '_delete_session'):
+            si._delete_session(si._get_store_id(session.sid))
+            session.sid = si._generate_sid(si.sid_length)
+        session.clear()
+        session.update(_pre_auth)
+
         session['user'] = userinfo
 
         # Assign role flags based on OIDC group memberships

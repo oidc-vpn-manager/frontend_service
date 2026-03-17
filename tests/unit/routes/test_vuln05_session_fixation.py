@@ -1,0 +1,68 @@
+"""
+VULN-05: Session Fixation — session ID must be regenerated on login.
+
+Before fix: the OIDC callback writes user data into the existing pre-login
+session without changing the session ID.  An attacker who planted a known
+session cookie inherits the fully authenticated session.
+
+After fix: the server-side session record for the old ID is deleted and a
+new SID is generated before user data is written, so the old cookie becomes
+useless after login.
+"""
+import pytest
+from unittest.mock import MagicMock
+from flask import redirect as flask_redirect
+
+
+def _get_session_cookie_value(client, app):
+    """Return the current session cookie value from the Werkzeug 3.x test client."""
+    cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session')
+    cookie = client.get_cookie(cookie_name, domain='localhost')
+    return cookie.value if cookie is not None else None
+
+
+@pytest.fixture
+def mock_oauth_vuln05(monkeypatch):
+    """Minimal OAuth mock for the OIDC callback route."""
+    mock_client = MagicMock()
+    mock_client.oidc.authorize_redirect.return_value = flask_redirect('/mocked-oidc')
+    mock_client.oidc.authorize_access_token.return_value = {'id_token': 'fake-jwt'}
+    mock_client.oidc.userinfo.return_value = {
+        'sub': 'user123',
+        'email': 'user@example.com',
+        'name': 'Test User',
+        'groups': [],
+    }
+    monkeypatch.setattr('app.routes.auth.oauth', mock_client)
+    return mock_client
+
+
+class TestVuln05SessionFixation:
+    """Session cookie value must differ before and after a successful OIDC login."""
+
+    def test_session_id_regenerated_after_login(self, app, mock_oauth_vuln05):
+        """The session cookie must change when the OIDC callback authenticates a user.
+
+        Before fix: the same SID is reused → cookie_before == cookie_after.
+        After fix:  the old SID is invalidated → cookie_before != cookie_after.
+        """
+        client = app.test_client()
+
+        # Establish a pre-auth session by visiting the login page with a next= param.
+        # This stores next_url in the session, creating a server-side session record.
+        client.get('/auth/login?next=/profile')
+
+        cookie_before = _get_session_cookie_value(client, app)
+        assert cookie_before is not None, "Expected a session cookie to be set during login"
+
+        # Complete the OIDC callback (oauth mocked above)
+        response = client.get('/auth/callback')
+        assert response.status_code == 302
+
+        cookie_after = _get_session_cookie_value(client, app)
+        assert cookie_after is not None, "Expected a session cookie after login"
+
+        assert cookie_before != cookie_after, (
+            "Session cookie unchanged after OIDC login — session fixation vulnerability: "
+            f"before={cookie_before!r}, after={cookie_after!r}"
+        )
