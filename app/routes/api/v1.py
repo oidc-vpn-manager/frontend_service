@@ -10,7 +10,7 @@ from app.utils.signing_client import request_signed_certificate, SigningServiceE
 from app.utils.openvpn_helpers import process_tls_crypt_key
 from app.utils.render_config_template import find_best_template_match, render_config_template
 from cryptography.hazmat.primitives import serialization
-from app.extensions import csrf
+from app.extensions import csrf, limiter
 import tarfile
 import io
 import os
@@ -56,6 +56,7 @@ def psk_type_required(required_type):
 
 
 @bp.route('/server/bundle', methods=['GET', 'POST'])
+@limiter.limit("10/hour")
 @admin_service_only_api
 @psk_required
 @psk_type_required('server')
@@ -275,6 +276,7 @@ def server_bundle(psk_object):
 
 
 @bp.route('/computer/bundle', methods=['GET', 'POST'])
+@limiter.limit("10/hour")
 @admin_service_only_api
 @psk_required
 @psk_type_required('computer')

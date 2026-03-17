@@ -17,6 +17,7 @@ import os
 import tempfile
 
 from flask import Blueprint, request, current_app, Response, jsonify
+from app.extensions import limiter
 from app.utils.tracing import trace
 from app.models import DownloadToken
 from app.utils.decorators import user_service_only
@@ -35,6 +36,7 @@ bp = Blueprint('download', __name__)
 
 @bp.route('/download')
 @bp.route('/download/<token_id>')
+@limiter.limit("5/minute")
 @user_service_only
 def download_profile(token_id=None):
     """

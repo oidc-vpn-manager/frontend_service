@@ -18,12 +18,17 @@ def app():
     app.config['OIDC_AUDITOR_GROUP'] = 'auditors'
     app.config['OIDC_SYSTEM_ADMIN_GROUP'] = 'system-admins'
     
+    # Disable rate limiting so tests don't bleed counter state
+    app.config['RATELIMIT_ENABLED'] = False
+    from app.extensions import limiter
+    limiter.init_app(app)
+
     # Register the auth blueprint
     from app.routes.auth import bp as auth_blueprint
     from app.routes.root import bp as root_blueprint
     app.register_blueprint(auth_blueprint)
     app.register_blueprint(root_blueprint)
-    
+
     return app
 
 

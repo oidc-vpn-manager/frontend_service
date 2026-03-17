@@ -21,18 +21,14 @@ class TestPreSharedKey:
             original_key = "my-secret-uuid"
             psk = PreSharedKey(description="test.com", key=original_key)
             
-            # Check that the internal, stored value is a hash (string)
+            # Check that the internal, stored value is an argon2id hash
             assert isinstance(psk.key_hash, str)
-            assert len(psk.key_hash) == 64  # SHA256 hex string length
+            assert psk.key_hash.startswith('$argon2id$')  # argon2 hash prefix
             assert psk.key_hash != original_key
-            
+
             # Check that verification works
             assert psk.verify_key(original_key) is True
             assert psk.verify_key("wrong-key") is False
-            
-            # Check that the hash matches what we expect
-            expected_hash = hashlib.sha256(original_key.encode('utf-8')).hexdigest()
-            assert psk.key_hash == expected_hash
 
     def test_is_valid_active_key(self, app):
         """Tests that an active key without an expiry is valid."""

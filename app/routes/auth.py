@@ -7,12 +7,13 @@ from flask import Blueprint, redirect, url_for, session, current_app, request
 from app.utils.tracing import trace
 from app.utils.security_logging import security_logger
 from urllib.parse import urlencode
-from app.extensions import oauth
+from app.extensions import oauth, limiter
 from app.utils.input_validation import sanitize_for_logging
 
 bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 @bp.route('/login')
+@limiter.limit("10/minute")
 def login():
     """
     Redirects the user to the OIDC provider to start the login process.
@@ -82,6 +83,7 @@ def login():
     return oauth.oidc.authorize_redirect(redirect_uri)
 
 @bp.route('/callback')
+@limiter.limit("30/minute")
 def callback():
     """
     Handles the callback from the OIDC provider after successful login.

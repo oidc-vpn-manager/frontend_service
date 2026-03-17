@@ -32,6 +32,11 @@ class Config:
 
         # Redis/Valkey Configuration for Rate Limit configuration
         self.RATELIMIT_STORAGE_URI = loadConfigValueFromFileOrEnvironment('RATELIMIT_STORAGE_URL', 'memory://')
+        self.RATELIMIT_DEFAULT = "200/hour"
+
+        # PSK hashing (VULN-15)
+        self.PSK_HASH_ALGORITHM = os.environ.get('PSK_HASH_ALGORITHM', 'argon2')
+        self.PSK_HASH_WORK_FACTOR = int(os.environ.get('PSK_HASH_WORK_FACTOR', '3'))
 
         # Database Configuration Values
         self.DATABASE_TYPE = os.environ.get('DATABASE_TYPE', '')

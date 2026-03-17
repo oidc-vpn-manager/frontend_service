@@ -9,6 +9,8 @@ automatic certificate provisioning for servers and computer identities.
 import uuid
 import hashlib
 from datetime import datetime, timezone
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
 from app.extensions import db
 from app.utils.cryptography import get_fernet
 from app.models.base import SecureModelMixin
@@ -68,8 +70,8 @@ class PreSharedKey(SecureModelMixin, db.Model):
         'key', 'key_hash', 'key_truncated'  # key handled specially in __init__
     ]
     
-    # Store the key as a hash (SHA256) in the database
-    key_hash = db.Column(db.String(64), unique=True, nullable=False)
+    # Store the key as an argon2id hash (or legacy SHA-256 for existing rows)
+    key_hash = db.Column(db.String(255), unique=True, nullable=False)
     
     description = db.Column(db.String(255), nullable=False, index=True)
     template_set = db.Column(db.String(100), nullable=False, default='Default')
@@ -127,22 +129,19 @@ class PreSharedKey(SecureModelMixin, db.Model):
         super().__init__(**kwargs)
         
     @staticmethod
+    def _argon2_hasher():
+        """Return a PasswordHasher configured from app config (or defaults)."""
+        try:
+            from flask import current_app
+            time_cost = int(current_app.config.get('PSK_HASH_WORK_FACTOR', 3))
+        except RuntimeError:
+            time_cost = 3
+        return PasswordHasher(time_cost=time_cost)
+
+    @staticmethod
     def hash_key(plaintext_key):
-        """
-        Generate SHA256 hash of a plaintext key for secure database storage.
-
-        Args:
-            plaintext_key (str): The plaintext key to hash
-
-        Returns:
-            str: 64-character hexadecimal SHA256 hash
-
-        Example:
-            >>> hash_val = PreSharedKey.hash_key("my-secret-key")
-            >>> len(hash_val)
-            64
-        """
-        return hashlib.sha256(plaintext_key.encode('utf-8')).hexdigest()
+        """Hash a plaintext key with argon2id for secure database storage."""
+        return PreSharedKey._argon2_hasher().hash(plaintext_key)
     
     @staticmethod
     def truncate_key(plaintext_key):
@@ -188,8 +187,21 @@ class PreSharedKey(SecureModelMixin, db.Model):
             >>> psk.verify_key("wrong-key")
             False
         """
-        import hmac
-        return hmac.compare_digest(self.key_hash, self.hash_key(plaintext_key))
+        # Detect legacy SHA-256 hashes (64 lowercase hex chars, no '$' prefix)
+        if len(self.key_hash) == 64 and not self.key_hash.startswith('$'):
+            expected = hashlib.sha256(plaintext_key.encode('utf-8')).hexdigest()
+            import hmac
+            match = hmac.compare_digest(self.key_hash, expected)
+            if match:
+                # Transparently rehash to argon2id so the DB row is upgraded
+                self.key_hash = self.hash_key(plaintext_key)
+            return match
+
+        # argon2id path
+        try:
+            return self._argon2_hasher().verify(self.key_hash, plaintext_key)
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            return False
     
     def record_usage(self):
         """

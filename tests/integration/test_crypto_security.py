@@ -277,9 +277,9 @@ class TestRandomnessAndEntropy:
             # All should be different (different UUIDs generate different hashes)
             assert len(set(generated_psk_hashes)) == 10, "PSK generation lacks randomness"
             
-            # Should have sufficient length (SHA256 hashes are 64 hex chars)
+            # Hashes must use argon2id (VULN-15 fix)
             for psk_hash in generated_psk_hashes:
-                assert len(psk_hash) == 64, f"PSK hash should be 64 chars: {len(psk_hash)} chars"
+                assert psk_hash.startswith('$argon2id$'), f"PSK hash should be argon2id: {psk_hash[:30]}"
                 
                 # Should contain mix of characters (not all same character)
                 unique_chars = set(psk_hash)

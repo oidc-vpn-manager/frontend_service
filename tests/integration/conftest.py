@@ -52,6 +52,7 @@ def app(httpserver, monkeypatch):
     app.config.update({
         "TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
         "WTF_CSRF_ENABLED": False,
+        "RATELIMIT_ENABLED": False,
         "ENVIRONMENT": "development",
         "FLASK_CONFIG": "development",
         "ROOT_CA_CERTIFICATE": "test-root-ca-cert",
@@ -75,7 +76,11 @@ def app(httpserver, monkeypatch):
         "SERVER_TEMPLATES_DIR": path_os.path.abspath(test_templates_dir),
         "SERVER_TEMPLATES_DIR": path_os.path.abspath(test_templates_dir)
     })
-    
+    # Flask-Limiter 4.x caches `enabled` in app.extensions at init_app time.
+    # Re-initialize so the cached flag picks up the False value above.
+    from app.extensions import limiter
+    limiter.init_app(app)
+
     mock_oauth_client = MagicMock()
     mock_oauth_client.oidc.authorize_redirect.side_effect = lambda redirect_uri: redirect(f"/mock_oidc_login?redirect_uri={redirect_uri}")
     with app.app_context():

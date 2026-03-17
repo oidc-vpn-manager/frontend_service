@@ -40,7 +40,7 @@ class TestDevelopmentCLIIntegration:
             
             # Verify the key hash exists and is valid
             assert psk.key_hash is not None
-            assert len(psk.key_hash) == 64  # SHA256 hex string
+            assert psk.key_hash.startswith('$argon2id$')  # argon2id hash (VULN-15)
             assert 'integration-test-server' in result.output
 
     def test_create_multiple_psks_different_hostnames(self, app):
