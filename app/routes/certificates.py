@@ -61,10 +61,12 @@ def transparency_log():
         if user.get('is_auditor') and request.args.get('show_uncollapsed') == 'true':
             filters['show_uncollapsed'] = 'true'
         
-        # Sort parameters
-        if request.args.get('sort'):
+        # Sort parameters — allowlist to prevent arbitrary values reaching the CT service
+        allowed_sort_fields = ['issued_at', 'subject', 'issuer', 'serial_number', 'fingerprint', 'certificate_type', 'revoked_at']
+        allowed_order_values = ['asc', 'desc']
+        if request.args.get('sort') in allowed_sort_fields:
             filters['sort'] = request.args.get('sort')
-        if request.args.get('order'):
+        if request.args.get('order') in allowed_order_values:
             filters['order'] = request.args.get('order')
         
         # Get certificates from Certificate Transparency service

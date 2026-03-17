@@ -507,3 +507,66 @@ class TestCertificateTransparencyViewing:
 
                 # Should have called warning with the specific message (line 128)
                 mock_warning.assert_called_once_with(f'Certificate not found: {valid_fingerprint}')
+
+    @patch('app.routes.certificates.get_certtransparency_client')
+    def test_sort_invalid_value_not_forwarded(self, mock_ct_client, app, auditor_session):
+        """VULN-14: Arbitrary sort values must not be forwarded to the CT service.
+
+        certificates.py previously passed sort/order params with only
+        markupsafe.escape() — no allowlist. An arbitrary value could reach the
+        CT service's database query.
+        """
+        mock_ct_instance = MagicMock()
+        mock_ct_client.return_value = mock_ct_instance
+        mock_ct_instance.list_certificates.return_value = {
+            'certificates': [], 'pagination': {}, 'filters': {}
+        }
+        mock_ct_instance.get_statistics.return_value = {}
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess.update(auditor_session)
+            response = client.get('/certificates/?sort=malicious_field; DROP TABLE certs;--')
+
+        assert response.status_code == 200
+        call_kwargs = mock_ct_instance.list_certificates.call_args[1]
+        assert 'sort' not in call_kwargs
+
+    @patch('app.routes.certificates.get_certtransparency_client')
+    def test_order_invalid_value_not_forwarded(self, mock_ct_client, app, auditor_session):
+        """VULN-14: Arbitrary order values must not be forwarded to the CT service."""
+        mock_ct_instance = MagicMock()
+        mock_ct_client.return_value = mock_ct_instance
+        mock_ct_instance.list_certificates.return_value = {
+            'certificates': [], 'pagination': {}, 'filters': {}
+        }
+        mock_ct_instance.get_statistics.return_value = {}
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess.update(auditor_session)
+            response = client.get('/certificates/?order=RANDOM()')
+
+        assert response.status_code == 200
+        call_kwargs = mock_ct_instance.list_certificates.call_args[1]
+        assert 'order' not in call_kwargs
+
+    @patch('app.routes.certificates.get_certtransparency_client')
+    def test_sort_valid_value_forwarded(self, mock_ct_client, app, auditor_session):
+        """VULN-14: Allowlisted sort values must still be forwarded correctly."""
+        mock_ct_instance = MagicMock()
+        mock_ct_client.return_value = mock_ct_instance
+        mock_ct_instance.list_certificates.return_value = {
+            'certificates': [], 'pagination': {}, 'filters': {}
+        }
+        mock_ct_instance.get_statistics.return_value = {}
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess.update(auditor_session)
+            response = client.get('/certificates/?sort=issued_at&order=desc')
+
+        assert response.status_code == 200
+        call_kwargs = mock_ct_instance.list_certificates.call_args[1]
+        assert call_kwargs.get('sort') == 'issued_at'
+        assert call_kwargs.get('order') == 'desc'
