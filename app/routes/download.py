@@ -16,7 +16,7 @@ OpenVPN Connect can check profile freshness via HEAD /openvpn-api/profile.
 import os
 import tempfile
 
-from flask import Blueprint, request, current_app, Response, jsonify
+from flask import Blueprint, request, current_app, Response, jsonify, session
 from app.extensions import limiter
 from app.utils.tracing import trace
 from app.models import DownloadToken
@@ -69,6 +69,18 @@ def download_profile(token_id=None):
         current_app.logger.warning(f"Download attempt with invalid token: {token}")
         return jsonify({'error': 'Invalid token'}), 400
     
+    # If the request carries an authenticated session, verify token ownership.
+    # Unauthenticated requests (CLI/WEB_AUTH) are allowed — the token's 128-bit
+    # entropy plus rate limiting and single-use enforcement are sufficient.
+    if 'user' in session:
+        session_sub = session['user'].get('sub')
+        if session_sub != download_token.user:
+            current_app.logger.warning(
+                f"Token ownership mismatch: session user {session_sub!r} "
+                f"attempted to redeem token owned by {download_token.user!r}"
+            )
+            return jsonify({'error': 'Token does not belong to the authenticated user'}), 403
+
     # Check if token is expired (5 minute window)
     if download_token.is_download_window_expired():
         current_app.logger.warning(f"Download attempt with expired token: {token}")
