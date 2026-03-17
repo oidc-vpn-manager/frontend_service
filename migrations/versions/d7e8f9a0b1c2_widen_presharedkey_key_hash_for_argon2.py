@@ -21,7 +21,7 @@ depends_on = None
 
 
 def upgrade():
-    with op.batch_alter_table('presharedkeys', schema=None) as batch_op:
+    with op.batch_alter_table('pre_shared_keys', schema=None) as batch_op:
         batch_op.alter_column(
             'key_hash',
             existing_type=sa.String(length=64),
@@ -31,7 +31,7 @@ def upgrade():
 
 
 def downgrade():
-    with op.batch_alter_table('presharedkeys', schema=None) as batch_op:
+    with op.batch_alter_table('pre_shared_keys', schema=None) as batch_op:
         batch_op.alter_column(
             'key_hash',
             existing_type=sa.String(length=255),
