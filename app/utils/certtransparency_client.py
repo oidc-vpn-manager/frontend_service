@@ -3,6 +3,7 @@ HTTP client for communicating with the Certificate Transparency service.
 """
 
 import requests
+from urllib.parse import quote
 from typing import Dict, Optional, List, Any
 from flask import current_app
 from app.utils.tracing import trace
@@ -352,7 +353,7 @@ class CertTransparencyClient:
                 'revoked_by': revoked_by
             }
         )
-        url = f"{self.base_url}/users/{user_id}/revoke-certificates"
+        url = f"{self.base_url}/users/{quote(user_id, safe='')}/revoke-certificates"
         data = {
             'reason': reason,
             'revoked_by': revoked_by

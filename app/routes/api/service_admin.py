@@ -228,6 +228,13 @@ def bulk_revoke_user_certificates(email):
     trace(current_app, 'routes.api.service_admin.bulk_revoke_user_certificates')
 
     try:
+        # Validate email format to prevent path traversal into CT service URL
+        from app.utils.input_validation import validate_email, InputValidationError
+        try:
+            email = validate_email(email)
+        except InputValidationError as e:
+            return jsonify(error="Invalid email address", details=str(e)), 400
+
         # Validate request data
         data = request.get_json()
         if not data or not data.get('reason'):
