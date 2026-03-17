@@ -987,7 +987,7 @@ class TestApiTokenManagement:
         assert '/admin/api-tokens' in response.location
 
         with app.app_context():
-            revoked = ApiToken.query.get(tok_id)
+            revoked = db.session.get(ApiToken, tok_id)
             assert revoked.is_revoked is True
 
     def test_revoke_api_token_not_found(self, app):

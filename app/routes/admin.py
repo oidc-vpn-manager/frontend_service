@@ -667,7 +667,7 @@ def revoke_api_token(token_id):
     trace(current_app, 'routes.admin.revoke_api_token')
     from app.models.apitoken import ApiToken
 
-    tok = ApiToken.query.get_or_404(token_id)
+    tok = db.get_or_404(ApiToken, token_id)
     tok.revoke()
     db.session.commit()
 

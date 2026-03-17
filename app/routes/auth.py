@@ -13,7 +13,7 @@ from app.utils.input_validation import sanitize_for_logging
 bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 @bp.route('/login')
-@limiter.limit("10/minute")
+@limiter.limit(lambda: current_app.config.get('LOGIN_RATE_LIMIT', '10/minute'))
 def login():
     """
     Redirects the user to the OIDC provider to start the login process.
