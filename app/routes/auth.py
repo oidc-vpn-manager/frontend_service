@@ -8,6 +8,7 @@ from app.utils.tracing import trace
 from app.utils.security_logging import security_logger
 from urllib.parse import urlencode
 from app.extensions import oauth
+from app.utils.input_validation import sanitize_for_logging
 
 bp = Blueprint('auth', __name__, url_prefix='/auth')
 
@@ -49,7 +50,7 @@ def login():
     # Check if login_required decorator already stored a destination URL
     if not next_url and 'next_url' in session:
         next_url = session['next_url']
-        current_app.logger.info(f"Using destination URL from login_required: {next_url}")
+        current_app.logger.info(f"Using destination URL from login_required: {sanitize_for_logging(next_url)}")
 
     if not next_url:
         # If no explicit next parameter, check if we came from a specific page
@@ -66,13 +67,13 @@ def login():
             pass
         else:
             # External URL - reject for security
-            current_app.logger.warning(f"Rejected external redirect URL: {next_url}")
+            current_app.logger.warning(f"Rejected external redirect URL: {sanitize_for_logging(next_url)}")
             next_url = None
 
     if next_url and ((next_url.startswith('/') and not next_url.startswith('//')) or next_url.startswith(request.url_root)):
         # Only store safe URLs from same origin
         session['next_url'] = next_url
-        current_app.logger.info(f"Storing destination URL for post-auth redirect: {next_url}")
+        current_app.logger.info(f"Storing destination URL for post-auth redirect: {sanitize_for_logging(next_url)}")
     elif 'next_url' in session:
         # Clear potentially unsafe or external URLs
         session.pop('next_url', None)
@@ -153,7 +154,7 @@ def callback():
         # Check for stored destination URL from pre-auth
         next_url = session.pop('next_url', None)
         if next_url:
-            current_app.logger.info(f"Redirecting to stored destination: {next_url}")
+            current_app.logger.info(f"Redirecting to stored destination: {sanitize_for_logging(next_url)}")
             return redirect(next_url)
 
         return redirect(url_for('root.index'))

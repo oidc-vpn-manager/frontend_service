@@ -139,22 +139,8 @@ def validate_alphanumeric_with_special(text: str, max_length: int = 255,
     return text
 
 
-def validate_certificate_fingerprint(fingerprint: str) -> str:
-    """Validate certificate fingerprint format."""
-    if not fingerprint or not isinstance(fingerprint, str):
-        raise InputValidationError("Fingerprint must be a non-empty string")
-
-    fingerprint = fingerprint.strip().upper()
-
-    # SHA-1 (40 hex chars) or SHA-256 (64 hex chars)
-    if len(fingerprint) not in [40, 64]:
-        raise InputValidationError("Fingerprint must be 40 (SHA-1) or 64 (SHA-256) hexadecimal characters")
-
-    if not re.match(r'^[A-F0-9]+$', fingerprint):
-        raise InputValidationError("Fingerprint must contain only hexadecimal characters")
-
-    return fingerprint
-
+# validate_certificate_fingerprint removed: superseded by
+# validate_certificate_fingerprint_or_404 / _or_400 in app.utils.validation.
 
 def validate_query_param(param_name: str, param_value: str,
                         allowed_values: Optional[List[str]] = None,
@@ -191,37 +177,8 @@ def validate_query_param(param_name: str, param_value: str,
     return param_value
 
 
-def validate_form_field(field_name: str, field_value: str,
-                       required: bool = False,
-                       max_length: int = 1000,
-                       allowed_patterns: Optional[List[str]] = None) -> str:
-    """Validate form field with comprehensive checks."""
-    if not isinstance(field_value, str):
-        field_value = str(field_value) if field_value is not None else ""
-
-    field_value = field_value.strip()
-
-    if required and not field_value:
-        raise InputValidationError(f"Field {field_name} is required")
-
-    if len(field_value) > max_length:
-        raise InputValidationError(f"Field {field_name} too long (max {max_length} characters)")
-
-    # If empty and not required, return empty string
-    if not field_value:
-        return ""
-
-    # Check against allowed patterns if specified
-    if allowed_patterns:
-        if not any(re.match(pattern, field_value) for pattern in allowed_patterns):
-            raise InputValidationError(f"Field {field_name} format is invalid")
-
-    # Basic XSS prevention
-    if re.search(r'<[^>]*script|javascript:|vbscript:|onload=|onerror=', field_value, re.IGNORECASE):
-        raise InputValidationError(f"Field {field_name} contains potentially dangerous content")
-
-    return field_value
-
+# validate_form_field removed: superseded by WTForms validators used by
+# form classes throughout this application.
 
 def validate_search_filter(filter_name: str, filter_value: str) -> str:
     """Validate search filter parameters to prevent injection."""

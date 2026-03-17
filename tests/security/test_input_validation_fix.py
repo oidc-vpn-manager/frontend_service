@@ -128,59 +128,11 @@ class TestInputValidationFix:
         with pytest.raises(InputValidationError):
             validate_query_param('test', long_value, max_length=100)
 
-    def test_validate_form_field_comprehensive(self):
-        """Test comprehensive form field validation."""
-        from app.utils.input_validation import validate_form_field, InputValidationError
+    # test_validate_form_field_comprehensive removed: validate_form_field deleted
+    # (superseded by WTForms validators).
 
-        # Valid fields
-        assert validate_form_field('reason', 'key_compromise', required=True) == 'key_compromise'
-        assert validate_form_field('comment', 'User requested revocation') == 'User requested revocation'
-        assert validate_form_field('optional', '', required=False) == ''
-
-        # Required field validation
-        with pytest.raises(InputValidationError):
-            validate_form_field('reason', '', required=True)
-
-        # XSS prevention
-        xss_attempts = [
-            '<script>alert("xss")</script>',
-            'javascript:alert("xss")',
-            'onload=alert("xss")',
-            'vbscript:alert("xss")',
-        ]
-
-        for xss in xss_attempts:
-            with pytest.raises(InputValidationError):
-                validate_form_field('test', xss)
-
-        # Length limit
-        long_content = "a" * 2000
-        with pytest.raises(InputValidationError):
-            validate_form_field('test', long_content, max_length=1000)
-
-    def test_validate_certificate_fingerprint(self):
-        """Test certificate fingerprint validation."""
-        from app.utils.input_validation import validate_certificate_fingerprint, InputValidationError
-
-        # Valid fingerprints
-        sha1_fp = "2FD4E1C67A2D28FCED849EE1BB76E7391B93EB12"
-        sha256_fp = "96BC82F4F6D3B4B9A8E9F1C2D3E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2"
-
-        assert validate_certificate_fingerprint(sha1_fp.lower()) == sha1_fp
-        assert validate_certificate_fingerprint(sha256_fp.lower()) == sha256_fp
-
-        # Invalid fingerprints
-        with pytest.raises(InputValidationError):
-            validate_certificate_fingerprint("invalid")
-
-        with pytest.raises(InputValidationError):
-            validate_certificate_fingerprint("12345")  # Too short
-
-        with pytest.raises(InputValidationError):
-            validate_certificate_fingerprint("GHIJKLMNOPQRSTUVWXYZ" * 3)  # Invalid hex
-
-        with pytest.raises(InputValidationError):
-            validate_certificate_fingerprint("")
+    # test_validate_certificate_fingerprint removed: validate_certificate_fingerprint
+    # deleted (superseded by _or_404/_or_400 in utils/validation.py).
 
     def test_validate_pagination_params(self):
         """Test pagination parameter validation."""

@@ -16,9 +16,7 @@ from app.utils.input_validation import (
     validate_pagination_params,
     validate_date_string,
     validate_alphanumeric_with_special,
-    validate_certificate_fingerprint,
     validate_query_param,
-    validate_form_field,
     validate_search_filter,
     sanitize_for_logging
 )
@@ -127,37 +125,8 @@ class TestValidateAlphanumericWithSpecial:
         assert "contains invalid characters" in str(exc_info.value)
 
 
-class TestValidateCertificateFingerprint:
-    """Test certificate fingerprint validation."""
-
-    def test_validate_certificate_fingerprint_valid_sha256(self):
-        """Test valid SHA-256 fingerprint."""
-        fingerprint = "A" * 64  # 64 hex characters
-        result = validate_certificate_fingerprint(fingerprint)
-        assert result == fingerprint
-
-    def test_validate_certificate_fingerprint_non_hex_chars(self):
-        """Test fingerprint with non-hexadecimal characters (line 154)."""
-        with pytest.raises(InputValidationError) as exc_info:
-            validate_certificate_fingerprint("G" * 64)  # G is not a hex character
-        assert "Fingerprint must contain only hexadecimal characters" in str(exc_info.value)
-
-    def test_validate_certificate_fingerprint_wrong_length(self):
-        """Test fingerprint with wrong length."""
-        with pytest.raises(InputValidationError) as exc_info:
-            validate_certificate_fingerprint("ABC123")  # Too short
-        assert "Fingerprint must be 40 (SHA-1) or 64 (SHA-256) hexadecimal characters" in str(exc_info.value)
-
-    def test_validate_certificate_fingerprint_none_or_non_string(self):
-        """Test fingerprint validation with None or non-string (line 145)."""
-        with pytest.raises(InputValidationError) as exc_info:
-            validate_certificate_fingerprint(None)
-        assert "Fingerprint must be a non-empty string" in str(exc_info.value)
-
-        with pytest.raises(InputValidationError) as exc_info:
-            validate_certificate_fingerprint("")  # Empty string
-        assert "Fingerprint must be a non-empty string" in str(exc_info.value)
-
+# TestValidateCertificateFingerprint removed: validate_certificate_fingerprint
+# was deleted from input_validation.py (superseded by _or_404/_or_400 in utils/validation.py).
 
 class TestValidatePortNumber:
     """Test port number validation."""
@@ -229,39 +198,8 @@ class TestValidateQueryParam:
         assert "Parameter page must be a string" in str(exc_info.value)
 
 
-class TestValidateFormField:
-    """Test form field validation."""
-
-    def test_validate_form_field_invalid_characters(self):
-        """Test form field with invalid characters (covers XSS prevention)."""
-        with pytest.raises(InputValidationError) as exc_info:
-            validate_form_field("username", "user<script>")
-        assert "Field username contains potentially dangerous content" in str(exc_info.value)
-
-    def test_validate_form_field_valid(self):
-        """Test valid form field."""
-        result = validate_form_field("username", "validuser123")
-        assert result == "validuser123"
-
-    def test_validate_form_field_non_string_conversion(self):
-        """Test form field with non-string value conversion (line 200)."""
-        result = validate_form_field("age", 25)  # Integer input
-        assert result == "25"
-
-        result = validate_form_field("score", None)  # None input
-        assert result == ""
-
-    def test_validate_form_field_pattern_validation(self):
-        """Test form field pattern validation (lines 216-217)."""
-        # Test with allowed patterns
-        with pytest.raises(InputValidationError) as exc_info:
-            validate_form_field("email", "invalid-email", allowed_patterns=[r'^[^@]+@[^@]+\.[^@]+$'])
-        assert "Field email format is invalid" in str(exc_info.value)
-
-        # Test valid pattern
-        result = validate_form_field("email", "test@example.com", allowed_patterns=[r'^[^@]+@[^@]+\.[^@]+$'])
-        assert result == "test@example.com"
-
+# TestValidateFormField removed: validate_form_field was deleted from
+# input_validation.py (superseded by WTForms validators).
 
 class TestValidateSearchFilter:
     """Test search filter validation."""
