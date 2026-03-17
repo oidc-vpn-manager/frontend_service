@@ -10,6 +10,7 @@ from app.utils.openvpn_helpers import process_tls_crypt_key
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 import json
+from urllib.parse import urlparse
 from app.extensions import db
 from app.models import DownloadToken
 
@@ -198,8 +199,12 @@ def bounce_to_admin():
         # No target specified, redirect to admin home
         target_url = admin_url_base.rstrip('/')
     
-    # Validate that target_url starts with admin_url_base for security
-    if not target_url.startswith(admin_url_base.rstrip('/')):
+    # Validate target_url by comparing parsed components (prevents subdomain bypass)
+    admin_parsed = urlparse(admin_url_base.rstrip('/'))
+    target_parsed = urlparse(target_url)
+    if not (target_parsed.scheme == admin_parsed.scheme and
+            target_parsed.netloc == admin_parsed.netloc and
+            target_parsed.path.startswith(admin_parsed.path)):
         current_app.logger.warning(f"Invalid admin redirect target: {target_url}")
         target_url = admin_url_base.rstrip('/')
     
@@ -227,8 +232,12 @@ def bounce_to_user():
         # No target specified, redirect to user home
         target_url = user_url_base.rstrip('/')
     
-    # Validate that target_url starts with user_url_base for security
-    if not target_url.startswith(user_url_base.rstrip('/')):
+    # Validate target_url by comparing parsed components (prevents subdomain bypass)
+    user_parsed = urlparse(user_url_base.rstrip('/'))
+    target_parsed = urlparse(target_url)
+    if not (target_parsed.scheme == user_parsed.scheme and
+            target_parsed.netloc == user_parsed.netloc and
+            target_parsed.path.startswith(user_parsed.path)):
         current_app.logger.warning(f"Invalid user redirect target: {target_url}")
         target_url = user_url_base.rstrip('/')
     
