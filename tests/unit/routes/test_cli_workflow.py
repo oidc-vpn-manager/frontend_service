@@ -713,17 +713,17 @@ class TestDownloadRouteGroupsAndSessionToken:
     @patch('app.routes.download.find_best_template_match')
     @patch('app.routes.download.render_config_template')
     @patch('app.routes.download.process_tls_crypt_key')
-    def test_download_does_not_return_vpn_session_token_header(
+    def test_download_returns_vpn_session_token_header(
             self, mock_tls, mock_render, mock_template, mock_csr, mock_sign,
             client, app_with_db):
         """
-        Tests that a successful download does NOT include a VPN-Session-Token
-        response header.
+        Tests that a successful download includes a VPN-Session-Token response
+        header equal to the token UUID.
 
-        OpenVPN Connect on macOS treats header values as base64 strings; the
-        UUID token contains '-' which is not valid base64, causing profile import
-        to fail with "Invalid character".  The freshness-check feature is
-        intentionally sacrificed for compatibility.
+        OpenVPN Connect reads this header and sends it back on subsequent
+        HEAD /openvpn-api/profile requests to check whether the profile is
+        still fresh.  Without this header the freshness check cannot succeed
+        and OpenVPN Connect would re-authenticate on every connection attempt.
         """
         mock_key = MagicMock()
         mock_key.private_bytes.return_value = b'key'
@@ -751,7 +751,7 @@ class TestDownloadRouteGroupsAndSessionToken:
 
             response = client.get(f'/download?token={token_uuid}')
             assert response.status_code == 200
-            assert 'VPN-Session-Token' not in response.headers
+            assert response.headers.get('VPN-Session-Token') == token_uuid.replace('-', '')
 
     @patch('app.routes.download.request_signed_certificate')
     @patch('app.routes.download.generate_key_and_csr')
@@ -925,7 +925,9 @@ class TestDownloadRouteGroupsAndSessionToken:
             client, app_with_db):
         """
         OWASP API3 (Excessive Data Exposure): Verifies that no response headers
-        leak user PII (email, groups, sub, token UUID).
+        leak user PII (email, groups, sub).  The token UUID is intentionally
+        returned in VPN-Session-Token for OpenVPN Connect freshness checks and
+        is not treated as PII.
         """
         mock_key = MagicMock()
         mock_key.private_bytes.return_value = b'key'
@@ -959,7 +961,6 @@ class TestDownloadRouteGroupsAndSessionToken:
             assert 'sensitive-user-sub' not in all_header_values
             assert 'sensitive@example.com' not in all_header_values
             assert 'engineering' not in all_header_values
-            assert token_uuid not in all_header_values
 
 
 class TestRetainGeneratedTemplate:

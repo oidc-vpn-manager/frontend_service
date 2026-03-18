@@ -78,8 +78,12 @@ def _is_profile_fresh(session_token: str) -> bool:
         True  # if the associated cert_expiry is in the future
     """
     try:
+        # Normalise to hyphenated UUID format: the download endpoint strips
+        # dashes before sending the token to avoid macOS base64 parse errors
+        # in OpenVPN Connect.  uuid.UUID() accepts both formats.
+        normalised = str(uuid.UUID(session_token))
         token_obj = DownloadToken.query.filter_by(
-            token=session_token, collected=True
+            token=normalised, collected=True
         ).first()
         if token_obj is None:
             return False

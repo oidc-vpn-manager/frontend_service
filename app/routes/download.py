@@ -203,16 +203,24 @@ def download_profile(token_id=None):
                 fh.write(final_config)
             current_app.logger.info(f"DEBUG: retained generated profile at {tmp_path}")
 
-        # 10. Return the profile.
-        # NOTE: VPN-Session-Token and Content-Encoding: identity headers are
-        # intentionally omitted.  OpenVPN Connect on macOS treats any unrecognised
-        # response header value as a base64 string; the UUID token contains '-'
-        # which is not valid base64, causing "Invalid character" import failures.
+        # 10. Return the profile with the VPN-Session-Token header.
+        # OpenVPN Connect reads this token and sends it back on subsequent
+        # HEAD /openvpn-api/profile requests to check whether the profile is
+        # still fresh (certificate has not expired).  Without this header the
+        # freshness check can never succeed and OpenVPN Connect will trigger
+        # a full re-authentication on every connection attempt.
+        #
+        # The UUID is returned without dashes (32 hex chars) because OpenVPN
+        # Connect on macOS parses response header values as base64 strings;
+        # the '-' character is not valid base64 and causes "Invalid character"
+        # import failures.  The HEAD handler normalises the value back to a
+        # UUID before the database lookup.
         return Response(
             final_config,
             mimetype="application/x-openvpn-profile",
             headers={
                 "Cache-Control": "no-store",
+                "VPN-Session-Token": download_token.token.replace('-', ''),
             }
         )
 
