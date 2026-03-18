@@ -56,7 +56,7 @@ def psk_type_required(required_type):
 
 
 @bp.route('/server/bundle', methods=['GET', 'POST'])
-@limiter.limit("10/hour")
+@limiter.limit(lambda: current_app.config.get('BUNDLE_RATE_LIMIT', '10/hour'))
 @admin_service_only_api
 @psk_required
 @psk_type_required('server')
@@ -276,7 +276,7 @@ def server_bundle(psk_object):
 
 
 @bp.route('/computer/bundle', methods=['GET', 'POST'])
-@limiter.limit("10/hour")
+@limiter.limit(lambda: current_app.config.get('BUNDLE_RATE_LIMIT', '10/hour'))
 @admin_service_only_api
 @psk_required
 @psk_type_required('computer')

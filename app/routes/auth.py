@@ -83,7 +83,7 @@ def login():
     return oauth.oidc.authorize_redirect(redirect_uri)
 
 @bp.route('/callback')
-@limiter.limit("30/minute")
+@limiter.limit(lambda: current_app.config.get('CALLBACK_RATE_LIMIT', '30/minute'))
 def callback():
     """
     Handles the callback from the OIDC provider after successful login.

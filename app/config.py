@@ -34,6 +34,9 @@ class Config:
         self.RATELIMIT_STORAGE_URI = loadConfigValueFromFileOrEnvironment('RATELIMIT_STORAGE_URL', 'memory://')
         self.RATELIMIT_DEFAULT = "200/hour"
         self.LOGIN_RATE_LIMIT = os.environ.get('LOGIN_RATE_LIMIT', '10/minute')
+        self.CALLBACK_RATE_LIMIT = os.environ.get('CALLBACK_RATE_LIMIT', '30/minute')
+        self.DOWNLOAD_RATE_LIMIT = os.environ.get('DOWNLOAD_RATE_LIMIT', '5/minute')
+        self.BUNDLE_RATE_LIMIT = os.environ.get('BUNDLE_RATE_LIMIT', '10/hour')
 
         # PSK hashing (VULN-15)
         self.PSK_HASH_ALGORITHM = os.environ.get('PSK_HASH_ALGORITHM', 'argon2')

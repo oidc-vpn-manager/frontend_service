@@ -36,7 +36,7 @@ bp = Blueprint('download', __name__)
 
 @bp.route('/download')
 @bp.route('/download/<token_id>')
-@limiter.limit("5/minute")
+@limiter.limit(lambda: current_app.config.get('DOWNLOAD_RATE_LIMIT', '5/minute'))
 @user_service_only
 def download_profile(token_id=None):
     """
