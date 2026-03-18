@@ -33,6 +33,7 @@ class Config:
         # Redis/Valkey Configuration for Rate Limit configuration
         self.RATELIMIT_STORAGE_URI = loadConfigValueFromFileOrEnvironment('RATELIMIT_STORAGE_URL', 'memory://')
         self.RATELIMIT_DEFAULT = "200/hour"
+        self.RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'true').lower() != 'false'
         self.LOGIN_RATE_LIMIT = os.environ.get('LOGIN_RATE_LIMIT', '10/minute')
         self.CALLBACK_RATE_LIMIT = os.environ.get('CALLBACK_RATE_LIMIT', '30/minute')
         self.DOWNLOAD_RATE_LIMIT = os.environ.get('DOWNLOAD_RATE_LIMIT', '5/minute')
