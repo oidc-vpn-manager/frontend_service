@@ -8,7 +8,7 @@
 {% block content %}
     <h1>Pre-Shared Key Created Successfully</h1>
     <div class="alert alert-success">
-        <p><strong>✅ Success!</strong> Your {{ psk_type.title() }} Pre-Shared Key for "{{ description }}" has been created using the "{{ template_set }}" template set.</p>
+        <p><strong>✅ Success!</strong> Your {{ psk_type.title() }} Pre-Shared Key for "{{ description }}" has been created using the "{{ template_set }}" {% if psk_type == 'computer' %}group profile{% else %}template set{% endif %}.</p>
     </div>
 
     <div class="security-warning" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 20px; margin: 20px 0;">

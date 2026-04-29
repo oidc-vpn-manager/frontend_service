@@ -7,6 +7,7 @@ from app.utils.render_config_template import (
     find_best_template_match,
     render_config_template,
     validate_config_templates,
+    get_group_profile_choices,
 )
 
 @pytest.fixture
@@ -208,6 +209,85 @@ class TestFindBestTemplateMatchLazyLoad:
             _name, content = find_best_template_match(app, ['default'])
 
         assert 'client' in content
+
+
+class TestGetGroupProfileChoices:
+    """Tests for the get_group_profile_choices helper used by the admin PSK form."""
+
+    def test_returns_one_choice_per_group_sorted(self, app):
+        """Distinct group names produce distinct choices, sorted case-insensitively."""
+        app.config['TEMPLATE_COLLECTION'] = [
+            {"priority": 200, "group_name": "Developers", "file_name": "0200.Developers.ovpn", "content": ""},
+            {"priority": 100, "group_name": "Default", "file_name": "0100.Default.ovpn", "content": ""},
+            {"priority": 300, "group_name": "Admins", "file_name": "0300.Admins.ovpn", "content": ""},
+        ]
+        with app.app_context():
+            choices = get_group_profile_choices(app)
+        assert choices == [
+            ('Admins', 'Admins (0300.Admins.ovpn)'),
+            ('Default', 'Default (0100.Default.ovpn)'),
+            ('Developers', 'Developers (0200.Developers.ovpn)'),
+        ]
+
+    def test_dedupes_to_lowest_priority_filename(self, app):
+        """If a group name repeats, the label uses the lowest-priority filename."""
+        app.config['TEMPLATE_COLLECTION'] = [
+            {"priority": 500, "group_name": "Default", "file_name": "0500.Default.ovpn", "content": ""},
+            {"priority": 100, "group_name": "Default", "file_name": "0100.Default.ovpn", "content": ""},
+        ]
+        with app.app_context():
+            choices = get_group_profile_choices(app)
+        assert choices == [('Default', 'Default (0100.Default.ovpn)')]
+
+    def test_empty_when_no_templates_loaded_and_no_path(self, app):
+        """Returns [] when nothing is loaded and no template path is configured."""
+        app.config['TEMPLATE_COLLECTION'] = None
+        app.config['OVPN_TEMPLATE_PATH'] = None
+        with app.app_context():
+            choices = get_group_profile_choices(app)
+        assert choices == []
+
+    def test_lazy_loads_from_template_path(self, app, tmp_path):
+        """If TEMPLATE_COLLECTION is unset but OVPN_TEMPLATE_PATH points to a real dir, load from disk."""
+        d = tmp_path / "user_templates"
+        d.mkdir()
+        (d / "0100.Default.ovpn").write_text("default")
+        (d / "0200.Developers.ovpn").write_text("dev")
+        app.config['TEMPLATE_COLLECTION'] = None
+        app.config['OVPN_TEMPLATE_PATH'] = str(d)
+        with app.app_context():
+            choices = get_group_profile_choices(app)
+        assert choices == [
+            ('Default', 'Default (0100.Default.ovpn)'),
+            ('Developers', 'Developers (0200.Developers.ovpn)'),
+        ]
+
+    def test_skips_entries_without_group_name(self, app):
+        """Defensive: a malformed entry without group_name is ignored, not raised."""
+        app.config['TEMPLATE_COLLECTION'] = [
+            {"priority": 100, "group_name": "", "file_name": "0100..ovpn", "content": ""},
+            {"priority": 200, "group_name": "Default", "file_name": "0200.Default.ovpn", "content": ""},
+        ]
+        with app.app_context():
+            choices = get_group_profile_choices(app)
+        assert choices == [('Default', 'Default (0200.Default.ovpn)')]
+
+    def test_uses_current_app_when_app_omitted(self, app):
+        """When called without an app, falls back to flask.current_app."""
+        app.config['TEMPLATE_COLLECTION'] = [
+            {"priority": 100, "group_name": "Default", "file_name": "0100.Default.ovpn", "content": ""},
+        ]
+        with app.app_context():
+            choices = get_group_profile_choices()
+        assert choices == [('Default', 'Default (0100.Default.ovpn)')]
+
+    def test_invalid_template_path_returns_empty(self, app):
+        """Bad OVPN_TEMPLATE_PATH causes load_config_templates to raise FileNotFoundError; helper returns []."""
+        app.config['TEMPLATE_COLLECTION'] = None
+        app.config['OVPN_TEMPLATE_PATH'] = '/non/existent/template/dir'
+        with app.app_context():
+            choices = get_group_profile_choices(app)
+        assert choices == []
 
 
 class TestRenderConfigTemplateSecurityViolation:

@@ -49,7 +49,8 @@ class TestAdminPskTypes:
                 'groups': ['admin']
             }
 
-        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]):
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)')]):
             response = client.post('/admin/psk/new', data={
                 'description': 'Test Server PSK',
                 'psk_type': 'server',
@@ -64,6 +65,7 @@ class TestAdminPskTypes:
                 psk = PreSharedKey.query.filter_by(description='Test Server PSK').first()
                 assert psk is not None
                 assert psk.psk_type == 'server'
+                assert psk.template_set == 'default'
                 assert psk.is_server_psk() is True
                 assert psk.is_computer_psk() is False
 
@@ -75,21 +77,24 @@ class TestAdminPskTypes:
                 'groups': ['admin']
             }
 
-        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('sitetosite', 'Site-to-Site')]):
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('sitetosite', 'Site-to-Site')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Developers', 'Developers (0200.Developers.ovpn)')]):
             response = client.post('/admin/psk/new', data={
                 'description': 'Test Computer PSK',
                 'psk_type': 'computer',
-                'template_set': 'sitetosite',
+                'group_profile': 'Developers',
                 'csrf_token': 'test-token'
             })
 
             assert response.status_code == 200
 
-            # Verify PSK was created with correct type
+            # Verify PSK was created with correct type and stored the
+            # selected group profile in the shared template_set column.
             with client.application.app_context():
                 psk = PreSharedKey.query.filter_by(description='Test Computer PSK').first()
                 assert psk is not None
                 assert psk.psk_type == 'computer'
+                assert psk.template_set == 'Developers'
                 assert psk.is_computer_psk() is True
                 assert psk.is_server_psk() is False
 
@@ -101,7 +106,8 @@ class TestAdminPskTypes:
                 'groups': ['admin']
             }
 
-        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]):
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)')]):
             # Create server PSK
             response = client.post('/admin/psk/new', data={
                 'description': 'Test Server Instructions',
@@ -114,12 +120,13 @@ class TestAdminPskTypes:
             # Should contain server bundle instructions
             assert b'get_openvpn_server_config.py' in response.data
             assert b'Server Bundle' in response.data
+            assert b'template set' in response.data
 
             # Create computer PSK
             response = client.post('/admin/psk/new', data={
                 'description': 'Test Computer Instructions',
                 'psk_type': 'computer',
-                'template_set': 'default',
+                'group_profile': 'Default',
                 'csrf_token': 'test-token'
             })
 
@@ -127,6 +134,7 @@ class TestAdminPskTypes:
             # Should contain computer identity instructions
             assert b'get_openvpn_computer_config.py' in response.data
             assert b'Computer Identity' in response.data
+            assert b'group profile' in response.data
 
     def test_psk_list_shows_psk_types(self, client):
         """Test that PSK list displays PSK types correctly."""
@@ -169,7 +177,8 @@ class TestAdminPskTypes:
                 'groups': ['admin']
             }
 
-        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]):
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)')]):
             # Submit form without psk_type - should default to server
             response = client.post('/admin/psk/new', data={
                 'description': 'Test Default Type PSK',
@@ -196,8 +205,103 @@ class TestAdminPskTypes:
                 'groups': ['admin']
             }
 
-        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]):
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)')]):
             response = client.get('/admin/psk/new')
             assert response.status_code == 200
             # Should contain the server option as default
             assert b'value="server" selected' in response.data or b'Server Bundle' in response.data
+            # Should expose both selectors so JS can swap them
+            assert b'id="template_set"' in response.data
+            assert b'id="group_profile"' in response.data
+
+    def test_create_computer_psk_with_invalid_group_profile_rejected(self, client):
+        """Computer PSK submission with a group profile not in the choices is rejected."""
+        with client.session_transaction() as sess:
+            sess['user'] = {
+                'sub': 'admin123',
+                'groups': ['admin']
+            }
+
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Developers', 'Developers (0200.Developers.ovpn)')]):
+            response = client.post('/admin/psk/new', data={
+                'description': 'Bad Group Profile PSK',
+                'psk_type': 'computer',
+                'group_profile': 'NotARealGroup',
+                'csrf_token': 'test-token'
+            })
+
+            # Re-rendered form (200) but with field error and no PSK saved.
+            assert response.status_code == 200
+            assert b'Invalid group profile selected.' in response.data
+            with client.application.app_context():
+                assert PreSharedKey.query.filter_by(description='Bad Group Profile PSK').first() is None
+
+    def test_create_computer_psk_no_group_profiles_redirects(self, client):
+        """When no group profiles are configured, computer PSK creation redirects with a flash."""
+        with client.session_transaction() as sess:
+            sess['user'] = {
+                'sub': 'admin123',
+                'groups': ['admin']
+            }
+
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[]):
+            response = client.post('/admin/psk/new', data={
+                'description': 'No Profiles PSK',
+                'psk_type': 'computer',
+                'group_profile': '',
+                'csrf_token': 'test-token'
+            }, follow_redirects=False)
+
+            assert response.status_code == 302
+            with client.application.app_context():
+                assert PreSharedKey.query.filter_by(description='No Profiles PSK').first() is None
+
+    def test_create_server_psk_no_template_sets_redirects(self, client):
+        """Server PSK POST with no server template sets redirects to PSK list."""
+        with client.session_transaction() as sess:
+            sess['user'] = {
+                'sub': 'admin123',
+                'groups': ['admin']
+            }
+
+        # Group profiles non-empty so the up-front "both empty" branch is bypassed,
+        # forcing the POST handler into the server-only empty-list branch.
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)')]):
+            response = client.post('/admin/psk/new', data={
+                'description': 'Server PSK No Templates',
+                'psk_type': 'server',
+                'template_set': '',
+                'csrf_token': 'test-token'
+            }, follow_redirects=False)
+
+            assert response.status_code == 302
+            with client.application.app_context():
+                assert PreSharedKey.query.filter_by(description='Server PSK No Templates').first() is None
+
+    def test_create_computer_psk_defaults_group_profile_when_blank(self, client):
+        """Submitting a computer PSK with no selection picks the first available group profile."""
+        with client.session_transaction() as sess:
+            sess['user'] = {
+                'sub': 'admin123',
+                'groups': ['admin']
+            }
+
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)'), ('Developers', 'Developers (0200.Developers.ovpn)')]):
+            response = client.post('/admin/psk/new', data={
+                'description': 'Defaulted Group Profile PSK',
+                'psk_type': 'computer',
+                'group_profile': '',
+                'csrf_token': 'test-token'
+            })
+
+            assert response.status_code == 200
+            with client.application.app_context():
+                psk = PreSharedKey.query.filter_by(description='Defaulted Group Profile PSK').first()
+                assert psk is not None
+                assert psk.psk_type == 'computer'
+                assert psk.template_set == 'Default'

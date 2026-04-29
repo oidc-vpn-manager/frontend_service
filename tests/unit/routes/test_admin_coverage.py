@@ -450,22 +450,24 @@ class TestAdminCoverage:
 
 def test_create_psk_no_template_sets(app):
     """
-    Test create PSK page when no server template sets are found (lines 39-40).
+    Test create PSK page when neither server template sets nor group profiles
+    are configured. The route should redirect to the PSK list with an error.
     """
-    # Mock get_template_set_choices to return empty list
-    with patch('app.utils.server_templates.get_template_set_choices') as mock_template_choices:
+    with patch('app.utils.server_templates.get_template_set_choices') as mock_template_choices, \
+         patch('app.utils.render_config_template.get_group_profile_choices') as mock_group_choices:
         mock_template_choices.return_value = []
-        
+        mock_group_choices.return_value = []
+
         with app.test_client() as client:
             with client.session_transaction() as sess:
                 sess['user'] = {
-                    'sub': 'test_admin', 
+                    'sub': 'test_admin',
                     'email': 'admin@example.org',
                     'groups': ['admins']
                 }
-            
+
             response = client.get('/admin/psk/new')
-            
+
             # Should redirect to PSK list with error message
             assert response.status_code == 302
             assert '/admin/psk' in response.location

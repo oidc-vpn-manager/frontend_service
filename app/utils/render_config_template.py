@@ -175,6 +175,65 @@ def find_best_template_match(app: Flask, user_group_memberships, template_collec
 
     return template_name, template_content
 
+def get_group_profile_choices(app: Flask = None) -> list:
+    """
+    Return SelectField choices for user-style group profile templates.
+
+    Loads templates from OVPN_TEMPLATE_PATH (filename pattern
+    ``PRIORITY.GroupName.ovpn``) and returns one ``(value, label)`` tuple per
+    distinct group name. Used when creating a Computer Identity PSK so the
+    admin selects a group profile that ``find_best_template_match`` will
+    later resolve to a single ``.ovpn`` user-style configuration.
+
+    Args:
+        app (Flask, optional): Flask application instance. Falls back to
+            ``flask.current_app`` when omitted so callers within a request
+            context can call without arguments.
+
+    Returns:
+        list: Sorted list of ``(group_name, label)`` tuples. The label
+            includes the lowest-priority filename for the group as a hint.
+            Returns an empty list if no templates are loaded.
+
+    Example:
+        >>> get_group_profile_choices(app)
+        [('Default', 'Default (0100.Default.ovpn)'),
+         ('Developers', 'Developers (0200.Developers.ovpn)')]
+    """
+    if app is None:
+        from flask import current_app
+        app = current_app
+    trace(
+        app,
+        'utils.render_config_template.get_group_profile_choices'
+    )
+
+    template_collection = app.config.get('TEMPLATE_COLLECTION')
+    if template_collection is None:
+        template_path = app.config.get('OVPN_TEMPLATE_PATH')
+        template_collection = []
+        if template_path:
+            try:
+                template_collection = load_config_templates(app, template_path)
+            except FileNotFoundError:
+                template_collection = []
+
+    seen = {}
+    for template in template_collection:
+        group_name = template.get('group_name')
+        if not group_name:
+            continue
+        existing = seen.get(group_name)
+        if existing is None or template.get('priority', 0) < existing.get('priority', 0):
+            seen[group_name] = template
+
+    choices = [
+        (group_name, f"{group_name} ({entry['file_name']})")
+        for group_name, entry in seen.items()
+    ]
+    choices.sort(key=lambda x: x[0].lower())
+    return choices
+
 def validate_config_templates(app: Flask) -> None:
     """
     Validate all OpenVPN configuration templates at application startup.

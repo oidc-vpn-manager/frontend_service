@@ -33,16 +33,22 @@ def new_psk():
     """Handles creation of a new Pre-Shared Key."""
     trace(current_app, 'routes.admin.new_psk')
     from app.utils.server_templates import get_template_set_choices
+    from app.utils.render_config_template import get_group_profile_choices
 
     form = NewPskForm()
 
-    # Populate template set choices
+    # Populate template set choices (server bundles) and group profile choices (computer identities)
     template_choices = get_template_set_choices()
-    if not template_choices:
-        flash('No server template sets found. Please configure server templates.', 'error')
-        return redirect(url_for('admin.list_psks'))
+    group_profile_choices = get_group_profile_choices(current_app)
 
     form.template_set.choices = template_choices
+    form.group_profile.choices = group_profile_choices
+
+    # If neither selector has any options, there is nothing to create. Redirect
+    # so the admin can fix their template configuration first.
+    if not template_choices and not group_profile_choices:
+        flash('No template sets or group profiles found. Please configure templates.', 'error')
+        return redirect(url_for('admin.list_psks'))
 
     # Validate form submission with error handling for malformed input
     try:
@@ -54,14 +60,39 @@ def new_psk():
         return render_template('admin/psk_new.html', form=form)
 
     if form_validated:
-        # Server-side validation: ensure template_set is valid (default to first choice if empty)
-        if not form.template_set.data and template_choices:
-            # Default to first template set if none selected
-            form.template_set.data = template_choices[0][0]
+        psk_type = form.psk_type.data or 'server'
 
-        if form.template_set.data:
-            valid_template_names = [choice[0] for choice in template_choices]
-            if form.template_set.data not in valid_template_names:
+        # Pick the appropriate selector based on PSK type. Both values are stored
+        # in the single PreSharedKey.template_set DB column, but they reference
+        # different on-disk template directories at config-generation time:
+        #   - server  -> SERVER_TEMPLATES_DIR (filename: Name.PRIORITY.ovpn)
+        #   - computer -> OVPN_TEMPLATE_PATH (filename: PRIORITY.GroupName.ovpn)
+        if psk_type == 'computer':
+            if not group_profile_choices:
+                flash('No group profiles available. Please configure user/group templates.', 'error')
+                return redirect(url_for('admin.list_psks'))
+
+            selected_value = form.group_profile.data
+            if not selected_value:
+                selected_value = group_profile_choices[0][0]
+                form.group_profile.data = selected_value
+
+            valid_names = [choice[0] for choice in group_profile_choices]
+            if selected_value not in valid_names:
+                form.group_profile.errors.append('Invalid group profile selected.')
+                return render_template('admin/psk_new.html', form=form)
+        else:
+            if not template_choices:
+                flash('No server template sets found. Please configure server templates.', 'error')
+                return redirect(url_for('admin.list_psks'))
+
+            selected_value = form.template_set.data
+            if not selected_value:
+                selected_value = template_choices[0][0]
+                form.template_set.data = selected_value
+
+            valid_names = [choice[0] for choice in template_choices]
+            if selected_value not in valid_names:
                 form.template_set.errors.append('Invalid template set selected.')
                 return render_template('admin/psk_new.html', form=form)
 
@@ -72,8 +103,8 @@ def new_psk():
         # Create the PSK record (this will hash the key automatically)
         new_key = PreSharedKey(
             description=form.description.data,
-            template_set=form.template_set.data,
-            psk_type=form.psk_type.data,
+            template_set=selected_value,
+            psk_type=psk_type,
             key=plaintext_psk
         )
         db.session.add(new_key)

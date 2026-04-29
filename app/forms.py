@@ -14,6 +14,7 @@ class NewPskForm(FlaskForm):
                           default='server',
                           validators=[DataRequired()])
     template_set = SelectField('Template Set', validate_choice=False)
+    group_profile = SelectField('Group Profile', validate_choice=False)
     submit = SubmitField('Create Key')
 
 class GenerateProfileForm(FlaskForm):
