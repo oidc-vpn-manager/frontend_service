@@ -4,7 +4,7 @@ Defines the routes for version 1 of the API.
 
 from flask import Blueprint, jsonify, current_app, Response, request
 from app.utils.tracing import trace
-from app.utils.decorators import psk_required, admin_service_only_api
+from app.utils.decorators import psk_required, admin_service_only_api, user_service_only_api
 from app.utils.ca_core import generate_key_and_csr
 from app.utils.signing_client import request_signed_certificate, SigningServiceError
 from app.utils.openvpn_helpers import process_tls_crypt_key
@@ -277,7 +277,7 @@ def server_bundle(psk_object):
 
 @bp.route('/computer/bundle', methods=['GET', 'POST'])
 @limiter.limit(lambda: current_app.config.get('BUNDLE_RATE_LIMIT', '10/hour'))
-@admin_service_only_api
+@user_service_only_api
 @psk_required
 @psk_type_required('computer')
 def computer_bundle(psk_object):
