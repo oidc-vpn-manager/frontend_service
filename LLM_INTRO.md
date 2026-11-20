@@ -193,6 +193,7 @@ The service supports in-built TLS at the Gunicorn level, configured via environm
 ### Authentication & Authorization
 - OIDC integration with group-based RBAC
 - PKCE (RFC 7636) with S256 code challenge for authorization code flow security
+- Back-channel requests to the identity provider (discovery, JWKS, token exchange, userinfo) send `User-Agent: oidc-vpn-manager-frontend/1` (`OIDC_USER_AGENT` in `app/extensions.py`). A CDN or WAF in front of the identity provider may refuse generic library user agents, and Authlib's default discloses the library version.
 - Session management with Flask-Session
 - API authentication for service-to-service calls
 - Rate limiting on sensitive endpoints
