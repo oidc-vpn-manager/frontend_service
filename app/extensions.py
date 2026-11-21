@@ -16,6 +16,20 @@ talisman = Talisman()
 sess = Session()
 csrf = CSRFProtect()
 
+# User-Agent for the server-side requests Authlib makes to the identity
+# provider (discovery, JWKS, token exchange, userinfo).
+#
+# Security considerations:
+#   - A CDN or WAF in front of the identity provider may refuse generic
+#     library user agents (python-requests, curl, ...), which breaks the token
+#     exchange after a successful browser login. Naming the service keeps the
+#     back-channel distinguishable from scanners and identifies the caller in
+#     the provider's logs.
+#   - Authlib's default ("Authlib/<version> (+https://authlib.org/)") discloses
+#     the library and its exact version to anyone observing outbound traffic;
+#     this value names only the service.
+OIDC_USER_AGENT = "oidc-vpn-manager-frontend/1"
+
 def init_extensions(app: Flask):
     app.config['SESSION_SQLALCHEMY'] = db
 
@@ -56,5 +70,6 @@ def init_extensions(app: Flask):
         server_metadata_url=app.config["OIDC_DISCOVERY_URL"],
         client_id=app.config["OIDC_CLIENT_ID"],
         client_secret=app.config["OIDC_CLIENT_SECRET"],
+        user_agent=OIDC_USER_AGENT,
         client_kwargs=client_kwargs
     )

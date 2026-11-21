@@ -17,6 +17,35 @@ def find_free_port():
         s.bind(('127.0.0.1', 0))
         return s.getsockname()[1]
 
+
+def _restore_oidc_client(oauth, previous_client):
+    """
+    Put the shared Authlib registry's 'oidc' client back as it was before a fixture mocked it.
+
+    Purpose:
+        `app.extensions.oauth` is a process-wide singleton. The fixtures below
+        swap a MagicMock into `oauth._clients['oidc']`; Authlib's `register()`
+        then returns that cached entry to every app created later in the run,
+        so without this restore later tests silently exercise the mock.
+
+    Args:
+        oauth: The `authlib.integrations.flask_client.OAuth` registry.
+        previous_client: The client present before the mock was installed,
+            or None if there was none.
+
+    Returns:
+        None.
+
+    Example:
+        >>> previous = oauth._clients.get('oidc')
+        >>> oauth._clients['oidc'] = MagicMock()
+        >>> _restore_oidc_client(oauth, previous)
+    """
+    if previous_client is None:
+        oauth._clients.pop('oidc', None)
+    else:
+        oauth._clients['oidc'] = previous_client
+
 @pytest.fixture(scope='function')
 def app(httpserver, monkeypatch):
     """
@@ -85,9 +114,14 @@ def app(httpserver, monkeypatch):
     mock_oauth_client.oidc.authorize_redirect.side_effect = lambda redirect_uri: redirect(f"/mock_oidc_login?redirect_uri={redirect_uri}")
     with app.app_context():
         from app.extensions import oauth
+        # `oauth` is a module-level singleton and Authlib's register() returns
+        # an already-cached client, so the mock must be removed on teardown or
+        # every app created later in the run inherits it.
+        previous_oidc_client = oauth._clients.get('oidc')
         oauth._clients['oidc'] = mock_oauth_client.oidc
         db.create_all()
     yield app
+    _restore_oidc_client(oauth, previous_oidc_client)
     with app.app_context():
         db.session.remove()
         db.drop_all()
@@ -171,11 +205,13 @@ def production_app(httpserver, monkeypatch, tmp_path):
         mock_oauth_client.oidc.authorize_redirect.side_effect = lambda redirect_uri: redirect(f"/mock_oidc_login?redirect_uri={redirect_uri}")
         with app.app_context():
             from app.extensions import oauth
+            previous_oidc_client = oauth._clients.get('oidc')
             oauth._clients['oidc'] = mock_oauth_client.oidc
             db.create_all()
-        
+
         yield app
-        
+        _restore_oidc_client(oauth, previous_oidc_client)
+
         # Cleanup - ensure complete isolation
         with app.app_context():
             try:
