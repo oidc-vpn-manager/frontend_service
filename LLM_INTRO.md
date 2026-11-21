@@ -195,7 +195,7 @@ The service supports in-built TLS at the Gunicorn level, configured via environm
 ### Authentication & Authorization
 - OIDC integration with group-based RBAC
 - PKCE (RFC 7636) with S256 code challenge for authorization code flow security
-- Back-channel requests to the identity provider (discovery, JWKS, token exchange, userinfo) send `User-Agent: oidc-vpn-manager-frontend/1` (`OIDC_USER_AGENT` in `app/extensions.py`). A CDN or WAF in front of the identity provider may refuse generic library user agents, and Authlib's default discloses the library version.
+- Back-channel requests to the identity provider (discovery, JWKS, token exchange, userinfo) send `User-Agent: oidc-vpn-manager-frontend/1` (`OIDC_USER_AGENT` in `app/extensions.py`). A CDN or WAF in front of the identity provider may refuse generic library user agents, and Authlib's default discloses the library version. Authlib's `user_agent=` reaches only the token/userinfo session; discovery and JWKS use a separate `client_cls` session, so `oauth` is a `ServiceOAuth` whose `ServiceUserAgentSession` sets the header on every session. Discovery is fetched on the first login after each restart, so a missing header there breaks login whenever a pod starts.
 - Session management with Flask-Session
 - API authentication for service-to-service calls
 - Rate limiting on sensitive endpoints
