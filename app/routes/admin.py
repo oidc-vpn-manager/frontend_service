@@ -110,6 +110,20 @@ def new_psk():
         db.session.add(new_key)
         db.session.commit()
 
+        # Choose the URL the operator should hand to the node:
+        # * server PSKs hit the admin-only /api/v1/server/bundle endpoint, so
+        #   the admin URL (the host this UI is being served from) is correct.
+        # * computer PSKs hit the user-only /api/v1/computer/bundle endpoint;
+        #   when service separation is configured the admin service exposes
+        #   USER_URL_BASE pointing to the user-facing URL, which is the URL
+        #   the managed device must reach. Fall back to the current host for
+        #   the combined deployment where USER_URL_BASE is unset.
+        user_url_base = current_app.config.get('USER_URL_BASE', '')
+        if new_key.psk_type == 'computer' and user_url_base:
+            displayed_server_url = user_url_base
+        else:
+            displayed_server_url = request.url_root.rstrip('/')
+
         # Return the PSK creation success page with the plaintext PSK to show once
         response = make_response(render_template('admin/psk_created.html',
                              psk=plaintext_psk,
@@ -117,7 +131,7 @@ def new_psk():
                              template_set=new_key.template_set,
                              psk_type=new_key.psk_type,
                              psk_id=new_key.id,
-                             server_url=request.url_root))
+                             server_url=displayed_server_url))
         response.headers['Cache-Control'] = 'no-store'
         response.headers['Pragma'] = 'no-cache'
         return response

@@ -305,3 +305,81 @@ class TestAdminPskTypes:
                 assert psk is not None
                 assert psk.psk_type == 'computer'
                 assert psk.template_set == 'Default'
+
+    def test_computer_psk_displays_user_url_base_when_service_separation_active(self, app, client):
+        """Computer PSK page must display the user-facing URL, not the admin one.
+
+        The /api/v1/computer/bundle endpoint is decorated @user_service_only_api,
+        so the URL the operator hands to a managed device must point at the user
+        service. On the admin deployment that target is exposed via USER_URL_BASE.
+        """
+        app.config['USER_URL_BASE'] = 'https://user.example.com'
+
+        with client.session_transaction() as sess:
+            sess['user'] = {'sub': 'admin123', 'groups': ['admin']}
+
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)')]):
+            response = client.post('/admin/psk/new', data={
+                'description': 'Computer PSK URL Test',
+                'psk_type': 'computer',
+                'group_profile': 'Default',
+                'csrf_token': 'test-token',
+            })
+
+        assert response.status_code == 200
+        body = response.data.decode()
+        assert '--server-url https://user.example.com' in body, (
+            "computer PSK page must surface USER_URL_BASE for the device to reach"
+        )
+        # The admin URL the UI was served from must NOT appear as the server-url
+        # for the computer-config command — devices cannot reach the admin host.
+        assert '--server-url http://localhost' not in body
+
+    def test_server_psk_uses_request_host_not_user_url_base(self, app, client):
+        """Server PSK page must use the request host (the admin URL it was served from), not USER_URL_BASE.
+
+        /api/v1/server/bundle is admin-only, so the URL the operator hands to
+        the OpenVPN server must point at the admin service, not the user one.
+        """
+        app.config['USER_URL_BASE'] = 'https://user.example.com'
+
+        with client.session_transaction() as sess:
+            sess['user'] = {'sub': 'admin123', 'groups': ['admin']}
+
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)')]):
+            response = client.post('/admin/psk/new', data={
+                'description': 'Server PSK URL Test',
+                'psk_type': 'server',
+                'template_set': 'default',
+                'csrf_token': 'test-token',
+            })
+
+        assert response.status_code == 200
+        body = response.data.decode()
+        # request.url_root inside the test client is http://localhost/
+        assert '--server-url http://localhost' in body, (
+            "server PSK page must surface the admin (request) host, not USER_URL_BASE"
+        )
+        assert '--server-url https://user.example.com' not in body
+
+    def test_computer_psk_falls_back_to_request_host_in_combined_deployment(self, app, client):
+        """Without USER_URL_BASE (combined deployment) the request host is used."""
+        app.config.pop('USER_URL_BASE', None)
+
+        with client.session_transaction() as sess:
+            sess['user'] = {'sub': 'admin123', 'groups': ['admin']}
+
+        with patch('app.utils.server_templates.get_template_set_choices', return_value=[('default', 'Default')]), \
+             patch('app.utils.render_config_template.get_group_profile_choices', return_value=[('Default', 'Default (0100.Default.ovpn)')]):
+            response = client.post('/admin/psk/new', data={
+                'description': 'Computer PSK Combined Test',
+                'psk_type': 'computer',
+                'group_profile': 'Default',
+                'csrf_token': 'test-token',
+            })
+
+        assert response.status_code == 200
+        body = response.data.decode()
+        assert '--server-url http://localhost' in body
