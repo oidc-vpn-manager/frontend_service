@@ -41,6 +41,8 @@ The service supports three deployment configurations:
 2. **User Service**: Set `ADMIN_URL_BASE`, serves only user routes  
 3. **Admin Service**: Set `USER_URL_BASE`, serves only admin routes
 
+On the Admin Service, the "PSK created" page shows the `--server-url` the operator hands to the node. A server PSK gets the admin host (`/api/v1/server/bundle` is admin-only). A computer PSK gets `USER_URL_BASE` (`/api/v1/computer/bundle` is user-only), falling back to the request host in Combined Mode.
+
 ## Key Dependencies
 
 - **Flask**: Web framework
